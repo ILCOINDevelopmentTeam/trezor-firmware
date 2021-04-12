@@ -123,6 +123,9 @@ class MessageType(IntEnum):
     EthereumSignMessage = 64
     EthereumVerifyMessage = 65
     EthereumMessageSignature = 66
+    EthereumSignTypedData = 464
+    EthereumTypedDataRequest = 465
+    EthereumTypedDataAck = 466
     NEMGetAddress = 67
     NEMAddress = 68
     NEMSignTx = 69
@@ -4541,6 +4544,72 @@ class EthereumMessageSignature(protobuf.MessageType):
     ) -> None:
         self.signature = signature
         self.address = address
+
+
+class EthereumSignTypedData(protobuf.MessageType):
+    MESSAGE_WIRE_TYPE = 464
+    FIELDS = {
+        1: protobuf.Field("address_n", "uint32", repeated=True, required=False),
+        2: protobuf.Field("use_v4", "bool", repeated=False, required=False),
+    }
+
+    def __init__(
+        self,
+        *,
+        address_n: Optional[List["int"]] = None,
+        use_v4: Optional["bool"] = True,
+    ) -> None:
+        self.address_n = address_n if address_n is not None else []
+        self.use_v4 = use_v4
+
+
+class EthereumTypedDataRequest(protobuf.MessageType):
+    MESSAGE_WIRE_TYPE = 465
+    FIELDS = {
+        1: protobuf.Field("member_path", "uint32", repeated=True, required=False),
+        2: protobuf.Field("expect_type", "bool", repeated=False, required=False),
+        3: protobuf.Field("signature", "bytes", repeated=False, required=False),
+        4: protobuf.Field("address", "string", repeated=False, required=False),
+    }
+
+    def __init__(
+        self,
+        *,
+        member_path: Optional[List["int"]] = None,
+        expect_type: Optional["bool"] = None,
+        signature: Optional["bytes"] = None,
+        address: Optional["str"] = None,
+    ) -> None:
+        self.member_path = member_path if member_path is not None else []
+        self.expect_type = expect_type
+        self.signature = signature
+        self.address = address
+
+
+class EthereumTypedDataAck(protobuf.MessageType):
+    MESSAGE_WIRE_TYPE = 466
+    FIELDS = {
+        1: protobuf.Field("member_name", "string", repeated=False, required=False),
+        2: protobuf.Field("member_type", "string", repeated=False, required=False),
+        3: protobuf.Field("member_array_n", "uint32", repeated=False, required=False),
+        4: protobuf.Field("member_children", "uint32", repeated=False, required=False),
+        5: protobuf.Field("member_value", "bytes", repeated=False, required=False),
+    }
+
+    def __init__(
+        self,
+        *,
+        member_name: Optional["str"] = None,
+        member_type: Optional["str"] = None,
+        member_array_n: Optional["int"] = None,
+        member_children: Optional["int"] = None,
+        member_value: Optional["bytes"] = None,
+    ) -> None:
+        self.member_name = member_name
+        self.member_type = member_type
+        self.member_array_n = member_array_n
+        self.member_children = member_children
+        self.member_value = member_value
 
 
 class EthereumVerifyMessage(protobuf.MessageType):

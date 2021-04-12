@@ -3201,6 +3201,64 @@ if TYPE_CHECKING:
         def is_type_of(cls, msg: protobuf.MessageType) -> TypeGuard["EthereumMessageSignature"]:
             return isinstance(msg, cls)
 
+    class EthereumSignTypedData(protobuf.MessageType):
+        address_n: "list[int]"
+        use_v4: "bool"
+
+        def __init__(
+            self,
+            *,
+            address_n: "list[int] | None" = None,
+            use_v4: "bool | None" = None,
+        ) -> None:
+            pass
+
+        @classmethod
+        def is_type_of(cls, msg: protobuf.MessageType) -> TypeGuard["EthereumSignTypedData"]:
+            return isinstance(msg, cls)
+
+    class EthereumTypedDataRequest(protobuf.MessageType):
+        member_path: "list[int]"
+        expect_type: "bool | None"
+        signature: "bytes | None"
+        address: "str | None"
+
+        def __init__(
+            self,
+            *,
+            member_path: "list[int] | None" = None,
+            expect_type: "bool | None" = None,
+            signature: "bytes | None" = None,
+            address: "str | None" = None,
+        ) -> None:
+            pass
+
+        @classmethod
+        def is_type_of(cls, msg: protobuf.MessageType) -> TypeGuard["EthereumTypedDataRequest"]:
+            return isinstance(msg, cls)
+
+    class EthereumTypedDataAck(protobuf.MessageType):
+        member_name: "str | None"
+        member_type: "str | None"
+        member_array_n: "int | None"
+        member_children: "int | None"
+        member_value: "bytes | None"
+
+        def __init__(
+            self,
+            *,
+            member_name: "str | None" = None,
+            member_type: "str | None" = None,
+            member_array_n: "int | None" = None,
+            member_children: "int | None" = None,
+            member_value: "bytes | None" = None,
+        ) -> None:
+            pass
+
+        @classmethod
+        def is_type_of(cls, msg: protobuf.MessageType) -> TypeGuard["EthereumTypedDataAck"]:
+            return isinstance(msg, cls)
+
     class EthereumVerifyMessage(protobuf.MessageType):
         signature: "bytes"
         message: "bytes"
