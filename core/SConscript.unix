@@ -109,6 +109,8 @@ if EVERYTHING:
 
 # libsecp256k1-zkp
 if FEATURE_FLAGS["SECP256K1_ZKP"]:
+    CCFLAGS_MOD += '-DSECP256K1_CONTEXT_SIZE=8416 '
+    CCFLAGS_MOD += '-DUSE_SECP256K1_ZKP '
     CPPPATH_MOD += [
         'vendor/secp256k1-zkp',
         'vendor/secp256k1-zkp/src',
@@ -126,13 +128,16 @@ if FEATURE_FLAGS["SECP256K1_ZKP"]:
         ('ECMULT_GEN_PREC_BITS', '4'),
         ('ECMULT_WINDOW_SIZE', '8'),
         'ENABLE_MODULE_GENERATOR',
-        'ENABLE_MODULE_RANGEPROOF',
         'ENABLE_MODULE_RECOVERY',
-        'ENABLE_MODULE_ECDH',
     ]
     SOURCE_MOD_SECP256K1_ZKP = [
         'vendor/secp256k1-zkp/src/secp256k1.c',
     ]
+    SOURCE_MOD += [
+        'vendor/trezor-crypto/zkp_context.c',
+        'vendor/trezor-crypto/zkp_ecdsa.c',
+    ]
+    CCFLAGS_MOD += '-DUSE_SECP256K1_ZKP_ECDSA '
 
 # modtrezorio
 SOURCE_MOD += [

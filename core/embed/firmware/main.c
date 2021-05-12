@@ -50,6 +50,7 @@
 #include "sdcard.h"
 #include "supervise.h"
 #include "touch.h"
+#include "zkp_context.h"
 
 // from util.s
 extern void shutdown_privileged(void);
@@ -71,6 +72,8 @@ int main(void) {
 #ifdef SYSTEM_VIEW
   enable_systemview();
 #endif
+
+  zkp_context_init();
 
 #if TREZOR_MODEL == T
 #if PRODUCTION
