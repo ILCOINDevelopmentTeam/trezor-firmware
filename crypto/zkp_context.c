@@ -22,6 +22,8 @@ void secp256k1_context_writeable_randomize(
   assert(returned == 1);
 }
 
+bool zkp_context_is_initialized(void) { return initialized; }
+
 void zkp_context_init() {
   assert(initialized == false);
 
