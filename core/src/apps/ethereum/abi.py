@@ -127,11 +127,7 @@ def abi_decode_single(parsed_type: str, data: bytes, packed: bool = True, offset
 
     if type_name == "address":
         value = abi_decode_single(raw_type, data, packed, offset)
-        # WARNING: was receiving "AttributeError: 'bytes' object has no attribute 'hex'"
-        # Modified so we can run automatic tests on the signing functionality,
-        # because the tests need to click through all the UI screens and it cannot
-        # receive and error
-        return "0x%s" % 'value.to_bytes(20, "big").hex()'
+        return hex(value)
 
     elif type_name == "bool":
         value = abi_decode_single(raw_type, data, packed, offset)
