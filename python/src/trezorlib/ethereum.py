@@ -16,7 +16,7 @@
 
 import json
 import re
-from typing import Dict, Tuple, Union
+from typing import Dict, Tuple, Union, List
 
 from eth_abi.packed import encode_single_packed
 
@@ -273,7 +273,7 @@ def sign_message(client, n, message):
 
 
 @expect(messages.EthereumTypedDataRequest)
-def sign_typed_data(client, n, use_v4, data_string):
+def sign_typed_data(client, n: List[int], use_v4: bool, data_string: str):
     data = json.loads(data_string)
     data = sanitize_typed_data(data)
 

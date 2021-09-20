@@ -396,15 +396,16 @@ def sign_message(client, address, message):
 @click.option(
     "--use-v4", type=bool, default=True, required=False, help=TYPED_DATA_USE_V4
 )
-@click.argument("typed_data_json")
+@click.argument("file", type=click.File("r"))
 @with_client
-def sign_typed_data(client, address, use_v4, typed_data_json):
+def sign_typed_data(client, address, use_v4, file):
     """Sign typed data (EIP-712) with Ethereum address."""
     address_n = tools.parse_path(address)
-    ret = ethereum.sign_typed_data(client, address_n, use_v4, typed_data_json)
+    content = file.read()
+    ret = ethereum.sign_typed_data(client, address_n, use_v4, content)
     output = {
         "address": ret.address,
-        "signature": "0x%s" % ret.signature.hex(),
+        "signature": f"0x{ret.signature.hex()}",
     }
     return output
 
