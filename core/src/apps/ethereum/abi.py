@@ -1,3 +1,5 @@
+from binascii import hexlify
+
 
 def abi_encode_single(type_name, arg) -> bytes:
     if type_name is "address":
@@ -127,7 +129,7 @@ def abi_decode_single(parsed_type: str, data: bytes, packed: bool = True, offset
 
     if type_name == "address":
         value = abi_decode_single(raw_type, data, packed, offset)
-        return hex(value)
+        return "0x" + hexlify(value.to_bytes(20, "big")).decode()
 
     elif type_name == "bool":
         value = abi_decode_single(raw_type, data, packed, offset)
