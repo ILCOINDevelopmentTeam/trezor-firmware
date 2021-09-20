@@ -14,7 +14,7 @@ def abi_encode_single(type_name, arg) -> bytes:
             raise ValueError("not an array")
 
         size = parse_array_n(type_name)
-        if size not in ["dynamic", "0"] and len(arg) > size:
+        if size not in ["dynamic", 0] and len(arg) > size:
             raise ValueError("elements exceed array size: %d" % size)
 
         ret = []
