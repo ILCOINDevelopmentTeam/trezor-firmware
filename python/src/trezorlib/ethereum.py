@@ -14,13 +14,14 @@
 # You should have received a copy of the License along with this library.
 # If not, see <https://www.gnu.org/licenses/lgpl-3.0.html>.
 
-from typing import Dict, Tuple, Union
-from . import exceptions, messages
-from .tools import expect, normalize_nfc, session
-
-from eth_abi.packed import encode_single_packed
 import json
 import re
+from typing import Dict, Tuple, Union
+
+from eth_abi.packed import encode_single_packed
+
+from . import exceptions, messages
+from .tools import expect, normalize_nfc, session
 
 
 def int_to_big_endian(value) -> bytes:
@@ -30,7 +31,9 @@ def int_to_big_endian(value) -> bytes:
 TYPE_NAME_RE = re.compile(r"^\w+")
 
 
-def find_typed_dependencies(primary_type: str, types: dict, results: list = None) -> list:
+def find_typed_dependencies(
+    primary_type: str, types: dict, results: list = None
+) -> list:
     """
     Finds all types within a type definition object
 
@@ -101,13 +104,13 @@ def sanitize_typed_data(data: dict) -> dict:
 
 def is_array(type_name: str) -> bool:
     if type_name:
-        return type_name[-1] == ']'
+        return type_name[-1] == "]"
 
     return False
 
 
 def typeof_array(type_name) -> str:
-    return type_name[:type_name.rindex('[')]
+    return type_name[: type_name.rindex("[")]
 
 
 def parse_number(arg) -> int:
@@ -137,7 +140,7 @@ def parse_array_n(type_name: str) -> Union[int, str]:
     if type_name.endswith("[]"):
         return "dynamic"
 
-    start_idx = type_name.rindex('[') + 1
+    start_idx = type_name.rindex("[") + 1
     return int(type_name[start_idx:])
 
 
@@ -151,12 +154,15 @@ def encode_value(type_name: str, value) -> bytes:
 
             value = parse_number(value)
             if value.bit_length() > size:
-                raise ValueError(f"supplied {int_type} exceeds width: {value.bit_length()} > {size}")
+                raise ValueError(
+                    f"supplied {int_type} exceeds width: {value.bit_length()} > {size}"
+                )
             if int_type == "uint":
                 if value < 0:
                     raise ValueError("supplied uint is negative")
 
     return encode_single_packed(type_name, value)
+
 
 # ====== Client functions ====== #
 
@@ -292,7 +298,11 @@ def sign_typed_data(client, n, use_v4, data_string):
         elif root_index == 1:
             if response.expect_type:
                 # when device expects type, the path [1, x] points to element x in types linear layout
-                member_typename = message_types_keys[type_index] if type_index < len(message_types_keys) else None
+                member_typename = (
+                    message_types_keys[type_index]
+                    if type_index < len(message_types_keys)
+                    else None
+                )
             else:
                 # when device expects value, the path [1, x] points to field x inside primaryType.
                 member_typename = data["primaryType"]

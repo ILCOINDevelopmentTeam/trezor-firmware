@@ -393,7 +393,9 @@ def sign_message(client, address, message):
 
 @cli.command()
 @click.option("-n", "--address", required=True, help=PATH_HELP)
-@click.option("--use-v4", type=bool, default=True, required=False, help=TYPED_DATA_USE_V4)
+@click.option(
+    "--use-v4", type=bool, default=True, required=False, help=TYPED_DATA_USE_V4
+)
 @click.argument("typed_data_json")
 @with_client
 def sign_typed_data(client, address, use_v4, typed_data_json):

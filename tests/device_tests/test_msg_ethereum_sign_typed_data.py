@@ -26,7 +26,7 @@ USE_V4 = True
 EXPECTED_ADDRESS = "0x73d0385F4d8E00C5e6504C6030F47BF6212736A8"
 EXPECTED_SIG = "0x74f1fb05738dfd1bf80d034099b2e5630697e41b3da74fd10168330ec0a592f1381ba191bfc122f530b82d5e8b03bb7ddc239ab21f1bc71f018438b2f9655cd01c"
 
-CONTENT = '''
+CONTENT = """
 {
     "types": {
         "EIP712Domain": [
@@ -91,7 +91,7 @@ CONTENT = '''
         "contents": "Hello, Bob!"
     }
 }
-'''
+"""
 
 
 @pytest.mark.setup_client(mnemonic=MNEMONIC)

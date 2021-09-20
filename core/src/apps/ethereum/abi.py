@@ -18,7 +18,7 @@ def abi_encode_single(type_name, arg) -> bytes:
             raise ValueError("elements exceed array size: %d" % size)
 
         ret = []
-        type_name = type_name[:type_name.rindex('[')]
+        type_name = type_name[: type_name.rindex("[")]
         for item in arg:
             ret.append(abi_encode_single(type_name, item))
 
@@ -88,7 +88,9 @@ def abi_encode(types: list, values: list) -> bytearray:
         buf = abi_encode_single(type_name, value)
 
         if isinstance(buf, bytes):
-            raise ValueError("encoded {} with {} as bytes! HALT".format(type_name, value))
+            raise ValueError(
+                "encoded {} with {} as bytes! HALT".format(type_name, value)
+            )
 
         # use the head/tail method for storing dynamic data
         if is_dynamic(type_name):
@@ -117,7 +119,9 @@ def abi_decode(types: list, data: list, packed: bool = True) -> list:
     return ret
 
 
-def abi_decode_single(parsed_type: str, data: bytes, packed: bool = True, offset: int = 0):
+def abi_decode_single(
+    parsed_type: str, data: bytes, packed: bool = True, offset: int = 0
+):
     if isinstance(parsed_type, str):
         parsed_type = parse_type(parsed_type)
 
@@ -165,16 +169,16 @@ def abi_decode_single(parsed_type: str, data: bytes, packed: bool = True, offset
 
         offset = abi_decode_single("uint256", data, packed, offset)
         size = abi_decode_single("uint256", data, packed, offset)
-        return data[offset + 32: offset + 32 + size]
+        return data[offset + 32 : offset + 32 + size]
 
     elif type_name.startswith("bytes"):
-        return data[offset: offset + parsed_type["size"]]
+        return data[offset : offset + parsed_type["size"]]
 
     elif type_name.startswith("uint"):
-        return int.from_bytes(data[offset: offset + 32], "big")
+        return int.from_bytes(data[offset : offset + 32], "big")
 
     elif type_name.startswith("int"):
-        return signed_int(data[offset: offset + 32], 256)
+        return signed_int(data[offset : offset + 32], 256)
 
     raise ValueError("unsupported or invalid type: %s" % type_name)
 
@@ -197,7 +201,9 @@ def parse_type(type_name: str) -> dict:
     if is_array(type_name):
         size = parse_array_n(type_name)
         sub_array = parse_type(typeof_array(type_name))
-        ret["memory_usage"] = 32 if size == "dynamic" else sub_array["memory_usage"] * size,
+        ret["memory_usage"] = (
+            32 if size == "dynamic" else sub_array["memory_usage"] * size,
+        )
         ret["sub_array"] = sub_array
         ret["is_array"] = True
         return ret
@@ -211,15 +217,22 @@ def parse_type(type_name: str) -> dict:
     elif type_name == "string":
         ret["raw_type"] = "bytes"
 
-    if (type_name.startswith("bytes") and type_name != "bytes") or \
-            type_name.startswith("uint") or type_name.startswith("int"):
+    if (
+        (type_name.startswith("bytes") and type_name != "bytes")
+        or type_name.startswith("uint")
+        or type_name.startswith("int")
+    ):
 
         size = parse_type_n(type_name)
 
-        if (type_name.startswith("bytes") and type_name != "bytes") and (size < 1 or size > 32):
+        if (type_name.startswith("bytes") and type_name != "bytes") and (
+            size < 1 or size > 32
+        ):
             raise ValueError("invalid bytes<N> width: %d" % size)
 
-        if (type_name.startswith("uint") or type_name.startswith("int")) and (size % 8 != 0 or size < 8 or size > 256):
+        if (type_name.startswith("uint") or type_name.startswith("int")) and (
+            size % 8 != 0 or size < 8 or size > 256
+        ):
             raise ValueError("invalid int/uint<N> width: %d" % size)
 
         ret["size"] = size
@@ -234,7 +247,7 @@ def set_length_right(msg: bytes, length: int) -> bytes:
     """
     if len(msg) < length:
         buf = bytearray(length)
-        buf[:len(msg)] = msg
+        buf[: len(msg)] = msg
         return buf
 
     return msg[:length]
@@ -270,7 +283,7 @@ def is_array(type_name: str) -> bool:
 
 
 def typeof_array(type_name) -> str:
-    return type_name[:type_name.rindex("[")]
+    return type_name[: type_name.rindex("[")]
 
 
 def parse_array_n(type_name: str):
@@ -278,7 +291,7 @@ def parse_array_n(type_name: str):
     if type_name.endswith("[]"):
         return "dynamic"
 
-    start_idx = type_name.rindex('[') + 1
+    start_idx = type_name.rindex("[") + 1
     return int(type_name[start_idx:])
 
 

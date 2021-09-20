@@ -2,22 +2,20 @@ from trezor.crypto.curve import secp256k1
 from trezor.crypto.hashlib import sha3_256
 from trezor.messages.EthereumTypedDataAck import EthereumTypedDataAck
 from trezor.messages.EthereumTypedDataRequest import EthereumTypedDataRequest
-
 from trezor.utils import HashWriter
 
 from apps.common import paths
 
 from . import address
+from .abi import abi_encode, is_array, typeof_array
 from .keychain import PATTERNS_ADDRESS, with_keychain_from_path
 from .layout import (
-    confirm_typed_domain_brief,
     confirm_typed_data_brief,
-    require_confirm_typed_domain,
+    confirm_typed_domain_brief,
     require_confirm_typed_data,
     require_confirm_typed_data_hash,
+    require_confirm_typed_domain,
 )
-
-from .abi import abi_encode, is_array, typeof_array
 
 
 def keccak256(message):
@@ -57,11 +55,17 @@ async def generate_typed_data_hash(ctx, use_v4: bool = True) -> bytes:
 
     show_domain = await confirm_typed_domain_brief(ctx, domain_values)
     if show_domain:
-        await require_confirm_typed_domain(ctx, domain_types["EIP712Domain"], domain_values)
+        await require_confirm_typed_domain(
+            ctx, domain_types["EIP712Domain"], domain_values
+        )
 
-    show_message = await confirm_typed_data_brief(ctx, primary_type, message_types[primary_type])
+    show_message = await confirm_typed_data_brief(
+        ctx, primary_type, message_types[primary_type]
+    )
     if show_message:
-        await require_confirm_typed_data(ctx, primary_type, message_types, message_values)
+        await require_confirm_typed_data(
+            ctx, primary_type, message_types, message_values
+        )
 
     domain_separator = hash_struct("EIP712Domain", domain_values, domain_types, use_v4)
     message_hash = hash_struct(primary_type, message_values, message_types, use_v4)
@@ -84,12 +88,14 @@ async def collect_domain_types(ctx) -> dict:
     if root_type.member_children:
         for i in range(0, root_type.member_children):
             dep = await request_member_type(ctx, [0, 0, i])
-            children.append({
-                "type": dep.member_type,
-                "name": dep.member_name,
-                "children_num": dep.member_children,
-                "member_array_n": dep.member_array_n,
-            })
+            children.append(
+                {
+                    "type": dep.member_type,
+                    "name": dep.member_name,
+                    "children_num": dep.member_children,
+                    "member_array_n": dep.member_array_n,
+                }
+            )
 
     types = {
         "EIP712Domain": children,
@@ -97,7 +103,9 @@ async def collect_domain_types(ctx) -> dict:
     return types
 
 
-async def collect_types(ctx, types: dict = None, member_path: list = None) -> tuple[str, dict]:
+async def collect_types(
+    ctx, types: dict = None, member_path: list = None
+) -> tuple[str, dict]:
     """
     Collects type definitions from the client
     """
@@ -122,26 +130,32 @@ async def collect_types(ctx, types: dict = None, member_path: list = None) -> tu
             if member.member_children:
                 for i in range(0, member.member_children):
                     dep = await request_member_type(ctx, member_type_path + [i])
-                    types[type_name].append({
-                        "type": dep.member_type,
-                        "name": dep.member_name,
-                        "children_num": dep.member_children,
-                        "member_array_n": dep.member_array_n,
-                    })
+                    types[type_name].append(
+                        {
+                            "type": dep.member_type,
+                            "name": dep.member_name,
+                            "children_num": dep.member_children,
+                            "member_array_n": dep.member_array_n,
+                        }
+                    )
 
         member_type_offset += 1
 
     return primary_type, types
 
 
-def hash_struct(primary_type: str, data: dict, types: dict = None, use_v4: bool = True) -> bytes:
+def hash_struct(
+    primary_type: str, data: dict, types: dict = None, use_v4: bool = True
+) -> bytes:
     """
     Encodes and hashes an object using Keccak256
     """
     return keccak256(encode_data(primary_type, data, types, use_v4))
 
 
-def encode_data(primary_type: str, data: dict, types: dict = None, use_v4: bool = True) -> bytes:
+def encode_data(
+    primary_type: str, data: dict, types: dict = None, use_v4: bool = True
+) -> bytes:
     """
     Encodes an object by encoding and concatenating each of its members
 
@@ -167,7 +181,9 @@ def encode_data(primary_type: str, data: dict, types: dict = None, use_v4: bool 
     return abi_encode(encoded_types, encoded_values)
 
 
-def encode_field(use_v4: bool, in_array: bool, types: dict, name: str, type_name: str, value) -> tuple[str, bytes]:
+def encode_field(
+    use_v4: bool, in_array: bool, types: dict, name: str, type_name: str, value
+) -> tuple[str, bytes]:
     if type_name in types:
         if value is None:
             return "bytes32", bytes(32)
@@ -182,7 +198,10 @@ def encode_field(use_v4: bool, in_array: bool, types: dict, name: str, type_name
 
     if type_name == "bytes32":
         if not (isinstance(value, bytes) or isinstance(value, bytearray)):
-            raise ValueError("value for field %s (type %s) expected to be bytes or bytearray" % (name, type_name))
+            raise ValueError(
+                "value for field %s (type %s) expected to be bytes or bytearray"
+                % (name, type_name)
+            )
 
         return "bytes32", keccak256(value)
 
@@ -191,7 +210,10 @@ def encode_field(use_v4: bool, in_array: bool, types: dict, name: str, type_name
             value = bytes(value, encoding="utf8")
             return "bytes32", keccak256(value)
         elif not (isinstance(value, bytes) or isinstance(value, bytearray)):
-            raise ValueError("value for field %s (type %s) expected to be bytes, bytearray or str" % (name, type_name))
+            raise ValueError(
+                "value for field %s (type %s) expected to be bytes, bytearray or str"
+                % (name, type_name)
+            )
 
         return "bytes32", keccak256(value)
 
@@ -202,16 +224,22 @@ def encode_field(use_v4: bool, in_array: bool, types: dict, name: str, type_name
 
         if parsed_type in types:
             if not isinstance(value, list):
-                raise ValueError("value for field %s (type %s) expected to be a list" % (name, type_name))
+                raise ValueError(
+                    "value for field %s (type %s) expected to be a list"
+                    % (name, type_name)
+                )
 
-            type_value_pairs = map(lambda x: encode_field(
-               use_v4=use_v4,
-               in_array=True,
-               types=types,
-               name=name,
-               type_name=typeof_array(type_name),
-               value=x,
-            ), value)
+            type_value_pairs = map(
+                lambda x: encode_field(
+                    use_v4=use_v4,
+                    in_array=True,
+                    types=types,
+                    name=name,
+                    type_name=typeof_array(type_name),
+                    value=x,
+                ),
+                value,
+            )
 
             encoded_value = bytearray(0)
             for [_, value] in type_value_pairs:
@@ -225,7 +253,9 @@ def encode_field(use_v4: bool, in_array: bool, types: dict, name: str, type_name
     return "bytes32", value
 
 
-async def collect_values(ctx, primary_type: str, types: dict = None, member_path: list = None) -> dict:
+async def collect_values(
+    ctx, primary_type: str, types: dict = None, member_path: list = None
+) -> dict:
     """
     Collects data values from the client
     """
@@ -247,12 +277,16 @@ async def collect_values(ctx, primary_type: str, types: dict = None, member_path
 
         res = await request_member_value(ctx, member_value_path)
         if res.member_type is None:
-            raise ValueError("value of %s in %s is not set in data" % (field_name, primary_type))
+            raise ValueError(
+                "value of %s in %s is not set in data" % (field_name, primary_type)
+            )
 
         if not (res.member_value is None):
             values[field_name] = res.member_value
         elif type_children and type_children > 0:
-            values[field_name] = await collect_values(ctx, field_type, types, member_value_path)
+            values[field_name] = await collect_values(
+                ctx, field_type, types, member_value_path
+            )
         elif not (type_array is None):
             if type_array == 0:
                 # override with dynamic size we've just got from values
@@ -260,7 +294,9 @@ async def collect_values(ctx, primary_type: str, types: dict = None, member_path
 
             values[field_name] = []
             for elemIdx in range(0, type_array):
-                elem = await collect_values(ctx, res.member_type, types, member_value_path + [elemIdx])
+                elem = await collect_values(
+                    ctx, res.member_type, types, member_value_path + [elemIdx]
+                )
                 values[field_name].append(elem)
         else:
             values[field_name] = None
@@ -292,7 +328,9 @@ def encode_type(primary_type: str, types: dict) -> bytes:
         children = types.get(type_name)
         if children is None:
             raise ValueError("no type definition specified: %s" % type_name)
-        fields = ",".join(map(lambda field: "%s %s" % (field["type"], field["name"]), children))
+        fields = ",".join(
+            map(lambda field: "%s %s" % (field["type"], field["name"]), children)
+        )
         result += b"%s(%s)" % (type_name, fields)
 
     return result
@@ -312,7 +350,7 @@ def find_typed_dependencies(primary_type: str, types=None, results=None):
         types = {}
 
     if primary_type[-1] == "]":
-        primary_type = primary_type[:primary_type.rindex('[')]
+        primary_type = primary_type[: primary_type.rindex("[")]
 
     if (primary_type in results) or (types.get(primary_type) is None):
         return results
