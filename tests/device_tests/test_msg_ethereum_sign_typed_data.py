@@ -93,6 +93,7 @@ CONTENT = '''
 }
 '''
 
+
 @pytest.mark.setup_client(mnemonic=MNEMONIC)
 def test_ethereum_sign_typed_data(client):
     with client:

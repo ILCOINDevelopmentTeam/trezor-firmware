@@ -2,19 +2,19 @@ from binascii import hexlify
 
 
 def abi_encode_single(type_name, arg) -> bytes:
-    if type_name is "address":
+    if type_name == "address":
         return abi_encode_single("uint160", parse_number(arg))
-    elif type_name is "bool":
+    elif type_name == "bool":
         return abi_encode_single("uint256", 1 if arg is True else 0)
-    elif type_name is "string":
-        return abi_encode_single("bytes", bytes(arg, encoding="utf8"))
+    elif type_name == "string":
+        return abi_encode_single("bytes", bytes(arg))
     elif is_array(type_name):
         # this part handles fixed-length ([2]) and variable length ([]) arrays
         if not isinstance(arg, list):
             raise ValueError("not an array")
 
         size = parse_array_n(type_name)
-        if not (size is "dynamic") and not (size is 0) and len(arg) > size:
+        if size not in ["dynamic", "0"] and len(arg) > size:
             raise ValueError("elements exceed array size: %d" % size)
 
         ret = []
@@ -22,16 +22,16 @@ def abi_encode_single(type_name, arg) -> bytes:
         for item in arg:
             ret.append(abi_encode_single(type_name, item))
 
-        if size is "dynamic":
+        if size == "dynamic":
             ret = [abi_encode_single("uint256", len(arg))] + ret
 
         return b"".join(ret)
-    elif type_name is "bytes":
+    elif type_name == "bytes":
         ret = bytearray(0)
         ret.extend(abi_encode_single("uint256", len(arg)))
         ret.extend(arg)
 
-        if not (len(arg) % 32 is 0):
+        if len(arg) % 32 != 0:
             zeros_padding = bytearray(32 - (len(arg) % 32))
             ret = b"".join([ret, zeros_padding])
 
@@ -47,7 +47,7 @@ def abi_encode_single(type_name, arg) -> bytes:
     elif type_name.startswith("uint"):
         size = parse_type_n(type_name)
 
-        if (not size % 8 is 0) or (size < 8) or (size > 256):
+        if (size % 8 != 0) or (size not in range(8, 257)):
             raise ValueError("invalid uint<N> width: %d" % size)
 
         num = parse_number(arg)
@@ -58,7 +58,7 @@ def abi_encode_single(type_name, arg) -> bytes:
     elif type_name.startswith("int"):
         size = parse_type_n(type_name)
 
-        if (not size % 8 is 0) or (size < 8) or (size > 256):
+        if (size % 8 != 0) or (size not in range(8, 257)):
             raise ValueError("invalid int<N> width: %d" % size)
 
         num = parse_number(arg)
@@ -75,7 +75,7 @@ def abi_encode(types: list, values: list) -> bytearray:
     for type_name in types:
         if is_array(type_name):
             size = parse_array_n(type_name)
-            if not (size is "dynamic"):
+            if size != "dynamic":
                 head_len += 32 * size
             else:
                 head_len += 32
@@ -105,7 +105,7 @@ def abi_encode(types: list, values: list) -> bytearray:
     return res
 
 
-def abi_decode(types: list, data: list, packed: bool = True) -> []:
+def abi_decode(types: list, data: list, packed: bool = True) -> list:
     ret = []
     offset = 0
 
@@ -124,25 +124,22 @@ def abi_decode_single(parsed_type: str, data: bytes, packed: bool = True, offset
     type_name = parsed_type["name"]
     raw_type = parsed_type["raw_type"]
 
-    print("abi_decode_single", parsed_type, "data:", data, "offset:", offset)
-    print("type_name", type_name, "raw_type", raw_type)
-
     if type_name == "address":
         value = abi_decode_single(raw_type, data, packed, offset)
         return "0x" + hexlify(value.to_bytes(20, "big")).decode()
 
     elif type_name == "bool":
         value = abi_decode_single(raw_type, data, packed, offset)
-        if "%d" % value == "1":
+        if str(value) == "1":
             return True
-        elif "%d" % value == "0":
+        elif str(value) == "0":
             return False
         else:
             raise ValueError("cannot decode bool value from {}".format(value))
 
     elif type_name == "string":
         value = abi_decode_single(raw_type, data, packed, offset)
-        return value.decode("utf8")
+        return value.decode()
 
     elif parsed_type["is_array"]:
         # this part handles fixed-length arrays ([2]) and variable length ([]) arrays
@@ -174,7 +171,6 @@ def abi_decode_single(parsed_type: str, data: bytes, packed: bool = True, offset
         return data[offset: offset + parsed_type["size"]]
 
     elif type_name.startswith("uint"):
-        print("INT FROM_BYTES DATA", data, "offsetted:", data[offset: offset + 32])
         return int.from_bytes(data[offset: offset + 32], "big")
 
     elif type_name.startswith("int"):
@@ -183,7 +179,7 @@ def abi_decode_single(parsed_type: str, data: bytes, packed: bool = True, offset
     raise ValueError("unsupported or invalid type: %s" % type_name)
 
 
-def parse_type(type_name) -> dict:
+def parse_type(type_name: str) -> dict:
     """
     Parse the given type
 
@@ -231,7 +227,7 @@ def parse_type(type_name) -> dict:
     return ret
 
 
-def set_length_right(msg: bytes, length) -> bytes:
+def set_length_right(msg: bytes, length: int) -> bytes:
     """
     Pads a `msg` with zeros till it has `length` bytes.
     Truncates the end of input if its length exceeds `length`.
@@ -244,7 +240,7 @@ def set_length_right(msg: bytes, length) -> bytes:
     return msg[:length]
 
 
-def parse_type_n(type_name):
+def parse_type_n(type_name) -> int:
     """Parse N from type<N>"""
     accum = []
     for c in type_name:
@@ -257,7 +253,7 @@ def parse_type_n(type_name):
     return int("".join(accum))
 
 
-def parse_number(arg):
+def parse_number(arg) -> int:
     if isinstance(arg, str):
         return int(arg, 16)
     elif isinstance(arg, int):
@@ -268,13 +264,13 @@ def parse_number(arg):
 
 def is_array(type_name: str) -> bool:
     if type_name:
-        return type_name[len(type_name) - 1] == ']'
+        return type_name[-1] == "]"
 
     return False
 
 
 def typeof_array(type_name) -> str:
-    return type_name[:type_name.rindex('[')]
+    return type_name[:type_name.rindex("[")]
 
 
 def parse_array_n(type_name: str):
@@ -282,29 +278,26 @@ def parse_array_n(type_name: str):
     if type_name.endswith("[]"):
         return "dynamic"
 
-    start_idx = type_name.rindex('[')+1
-    end_idx = len(type_name) - 1
-
-    return int(type_name[start_idx:end_idx])
+    start_idx = type_name.rindex('[') + 1
+    return int(type_name[start_idx:])
 
 
 def is_dynamic(type_name: str) -> bool:
-    if type_name is "string":
+    if type_name in ["string", "bytes"]:
         return True
-    elif type_name is "bytes":
-        return True
-    elif is_array(type_name) and parse_array_n(type_name) is "dynamic":
+    elif is_array(type_name) and parse_array_n(type_name) == "dynamic":
         return True
 
     return False
 
 
-def signed_int(val, bits):
+def signed_int(val, bits) -> int:
     if type(val) is bytes:
         val = int.from_bytes(val, "big")
     elif type(val) is str:
         val = int(val, 16)
+
     if (val & (1 << (bits - 1))) != 0:
         val = val - (1 << bits)
-    return val
 
+    return val

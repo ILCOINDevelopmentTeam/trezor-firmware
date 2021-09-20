@@ -406,6 +406,7 @@ def sign_typed_data(client, address, use_v4, typed_data_json):
     }
     return output
 
+
 @cli.command()
 @click.argument("address")
 @click.argument("signature")

@@ -15,6 +15,7 @@ install_requires = [
     "typing_extensions>=3.7.4",
     "pyblake2>=0.9.3 ; python_version<'3.6'",
     "attrs",
+    "eth_abi>=2.1.1",
 ]
 
 extras_require = {

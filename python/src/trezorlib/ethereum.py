@@ -14,6 +14,7 @@
 # You should have received a copy of the License along with this library.
 # If not, see <https://www.gnu.org/licenses/lgpl-3.0.html>.
 
+from typing import Dict, Tuple, Union
 from . import exceptions, messages
 from .tools import expect, normalize_nfc, session
 
@@ -21,14 +22,15 @@ from eth_abi.packed import encode_single_packed
 import json
 import re
 
-def int_to_big_endian(value):
+
+def int_to_big_endian(value) -> bytes:
     return value.to_bytes((value.bit_length() + 7) // 8, "big")
 
 
-type_name_re = re.compile("^\\w*")
+TYPE_NAME_RE = re.compile(r"^\w+")
 
 
-def find_typed_dependencies(primary_type: str, types: dict, results: list = None):
+def find_typed_dependencies(primary_type: str, types: dict, results: list = None) -> list:
     """
     Finds all types within a type definition object
 
@@ -39,11 +41,11 @@ def find_typed_dependencies(primary_type: str, types: dict, results: list = None
     if results is None:
         results = []
 
-    m = type_name_re.match(primary_type)
+    m = TYPE_NAME_RE.match(primary_type)
     if m:
-        primary_type = m.string[m.start():m.end()]
+        primary_type = m.group(0)
     else:
-        raise ValueError("cannot parse primary type: %s" % primary_type)
+        raise ValueError(f"cannot parse primary type: {primary_type}")
 
     if (primary_type in results) or (types.get(primary_type) is None):
         return results
@@ -52,12 +54,13 @@ def find_typed_dependencies(primary_type: str, types: dict, results: list = None
     for field in types[primary_type]:
         deps = find_typed_dependencies(field["type"], types, results)
         for dep in deps:
-            if not dep in results:
+            if dep not in results:
                 results = results + [dep]
 
     return results
 
-def encode_type(primary_type: str, types: dict):
+
+def encode_type(primary_type: str, types: dict) -> Tuple[str, Dict]:
     """
     Encodes the type of an object by encoding a comma delimited list of its members
 
@@ -67,43 +70,38 @@ def encode_type(primary_type: str, types: dict):
     result = ""
     result_indexed = {}
 
-    deps = find_typed_dependencies(primary_type, types)
-    deps = list(filter(lambda dep: dep != primary_type, deps))
-    deps = [primary_type] + sorted(deps)
+    all_deps = find_typed_dependencies(primary_type, types)
+    non_primary_deps = [dep for dep in all_deps if dep != primary_type]
+    deps_primary_first = [primary_type] + sorted(non_primary_deps)
 
-    for type_name in deps:
+    for type_name in deps_primary_first:
         children = types.get(type_name)
         if children is None:
-            raise ValueError("no type definition specified: %s" % type_name)
-        fields = ",".join(map(lambda field: "%s %s" % (field["type"], field["name"]), children))
+            raise ValueError(f"no type definition specified: {type_name}")
+        fields = ",".join([f"{c['type']} {c['name']}" for c in children])
         result_indexed[type_name] = [field for (_, field) in enumerate(children)]
-        result += "%s(%s)" % (type_name, fields)
+        result += f"{type_name}({fields})"
 
     return result, result_indexed
 
-allowed_typed_data_properties = ["types", "primaryType", "domain", "message"]
 
-def sanitize_typed_data(data: dict):
+REQUIRED_TYPED_DATA_PROPERTIES = ["types", "primaryType", "domain", "message"]
+
+
+def sanitize_typed_data(data: dict) -> dict:
     """
     Removes properties from a message object that are not defined per EIP-712
 
     data - typed message object
     """
-    sanitized_data = {}
-    for key in allowed_typed_data_properties:
-        val = data.get(key)
-        if val is None:
-            continue
-        sanitized_data[key] = val
-
-    if "types" in sanitized_data:
-        sanitized_data["types"] = { "EIP712Domain": [], **sanitized_data["types"] }
-
+    sanitized_data = {key: data[key] for key in REQUIRED_TYPED_DATA_PROPERTIES}
+    sanitized_data["types"].setdefault("EIP712Domain", [])
     return sanitized_data
+
 
 def is_array(type_name: str) -> bool:
     if type_name:
-        return type_name[len(type_name) - 1] == ']'
+        return type_name[-1] == ']'
 
     return False
 
@@ -112,7 +110,7 @@ def typeof_array(type_name) -> str:
     return type_name[:type_name.rindex('[')]
 
 
-def parse_number(arg):
+def parse_number(arg) -> int:
     if isinstance(arg, str):
         return int(arg, 16)
     elif isinstance(arg, int):
@@ -121,7 +119,7 @@ def parse_number(arg):
     raise ValueError("arg is not a number")
 
 
-def parse_type_n(type_name):
+def parse_type_n(type_name: str) -> int:
     """Parse N from type<N>"""
     accum = []
     for c in type_name:
@@ -134,37 +132,29 @@ def parse_type_n(type_name):
     return int("".join(accum))
 
 
-def parse_array_n(type_name: str):
+def parse_array_n(type_name: str) -> Union[int, str]:
     """Parse N in type[<N>] where "type" can itself be an array type."""
     if type_name.endswith("[]"):
         return "dynamic"
 
-    start_idx = type_name.rindex('[')+1
-    end_idx = len(type_name) - 1
+    start_idx = type_name.rindex('[') + 1
+    return int(type_name[start_idx:])
 
-    return int(type_name[start_idx:end_idx])
 
 def encode_value(type_name: str, value) -> bytes:
-    if type_name.startswith("uint"):
-        size = parse_type_n(type_name)
+    for int_type in ["int", "uint"]:
+        if type_name.startswith(int_type):
+            size = parse_type_n(type_name)
 
-        if (not size % 8 == 0) or (size < 8) or (size > 256):
-            raise ValueError("invalid uint<N> width: %d" % size)
+            if (size % 8 != 0) or (size not in range(8, 257)):
+                raise ValueError(f"invalid {int_type}<N> width: {size}")
 
-        value = parse_number(value)
-        if value.bit_length() > size:
-            raise ValueError("supplied uint exceeds width: %d > %d" % (value.bit_length(), size))
-        if value < 0:
-            raise ValueError("supplied uint is negative")
-    elif type_name.startswith("int"):
-        size = parse_type_n(type_name)
-
-        if (not size % 8 == 0) or (size < 8) or (size > 256):
-            raise ValueError("invalid int<N> width: %d" % size)
-
-        value = parse_number(value)
-        if value.bit_length() > size:
-            raise ValueError("supplied int exceeds width: %d > %d" % (value.bit_length(), size))
+            value = parse_number(value)
+            if value.bit_length() > size:
+                raise ValueError(f"supplied {int_type} exceeds width: {value.bit_length()} > {size}")
+            if int_type == "uint":
+                if value < 0:
+                    raise ValueError("supplied uint is negative")
 
     return encode_single_packed(type_name, value)
 
@@ -274,6 +264,7 @@ def sign_tx_eip1559(
 def sign_message(client, n, message):
     message = normalize_nfc(message)
     return client.call(messages.EthereumSignMessage(address_n=n, message=message))
+
 
 @expect(messages.EthereumTypedDataRequest)
 def sign_typed_data(client, n, use_v4, data_string):
@@ -400,6 +391,7 @@ def sign_typed_data(client, n, use_v4, data_string):
             response = client.call(request)
 
     return response
+
 
 def verify_message(client, address, signature, message):
     message = normalize_nfc(message)

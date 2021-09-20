@@ -1,15 +1,11 @@
-from ubinascii import hexlify, unhexlify
-
 from trezor.crypto.curve import secp256k1
 from trezor.crypto.hashlib import sha3_256
 from trezor.messages.EthereumTypedDataAck import EthereumTypedDataAck
 from trezor.messages.EthereumTypedDataRequest import EthereumTypedDataRequest
 
-from trezor.ui.components.tt.text import Text
 from trezor.utils import HashWriter
 
 from apps.common import paths
-from apps.common.confirm import confirm, require_confirm, require_hold_to_confirm
 
 from . import address
 from .keychain import PATTERNS_ADDRESS, with_keychain_from_path
@@ -101,7 +97,7 @@ async def collect_domain_types(ctx) -> dict:
     return types
 
 
-async def collect_types(ctx, types: dict = None, member_path: list = None) -> (str, dict):
+async def collect_types(ctx, types: dict = None, member_path: list = None) -> tuple[str, dict]:
     """
     Collects type definitions from the client
     """
@@ -118,7 +114,7 @@ async def collect_types(ctx, types: dict = None, member_path: list = None) -> (s
         type_name = member.member_type
         if type_name is None:
             break
-        elif member_type_offset is 0:
+        elif member_type_offset == 0:
             primary_type = type_name
 
         if not (type_name in types):
@@ -171,7 +167,7 @@ def encode_data(primary_type: str, data: dict, types: dict = None, use_v4: bool 
     return abi_encode(encoded_types, encoded_values)
 
 
-def encode_field(use_v4: bool, in_array: bool, types: dict, name: str, type_name: str, value) -> (str, bytes):
+def encode_field(use_v4: bool, in_array: bool, types: dict, name: str, type_name: str, value) -> tuple[str, bytes]:
     if type_name in types:
         if value is None:
             return "bytes32", bytes(32)
@@ -184,13 +180,13 @@ def encode_field(use_v4: bool, in_array: bool, types: dict, name: str, type_name
     if value is None:
         raise ValueError("missing value for field %s of type %s" % (name, type_name))
 
-    if type_name is "bytes32":
+    if type_name == "bytes32":
         if not (isinstance(value, bytes) or isinstance(value, bytearray)):
             raise ValueError("value for field %s (type %s) expected to be bytes or bytearray" % (name, type_name))
 
         return "bytes32", keccak256(value)
 
-    if type_name is "string":
+    if type_name == "string":
         if isinstance(value, str):
             value = bytes(value, encoding="utf8")
             return "bytes32", keccak256(value)
@@ -258,7 +254,7 @@ async def collect_values(ctx, primary_type: str, types: dict = None, member_path
         elif type_children and type_children > 0:
             values[field_name] = await collect_values(ctx, field_type, types, member_value_path)
         elif not (type_array is None):
-            if type_array is 0:
+            if type_array == 0:
                 # override with dynamic size we've just got from values
                 type_array = res.member_array_n
 
@@ -272,14 +268,14 @@ async def collect_values(ctx, primary_type: str, types: dict = None, member_path
     return values
 
 
-def hash_type(primary_type, types) -> bytes:
+def hash_type(primary_type: str, types: dict) -> bytes:
     """
     Encodes and hashes a type using Keccak256
     """
     return keccak256(encode_type(primary_type, types))
 
 
-def encode_type(primary_type: str, types: dict):
+def encode_type(primary_type: str, types: dict) -> bytes:
     """
     Encodes the type of an object by encoding a comma delimited list of its members
 
@@ -315,7 +311,7 @@ def find_typed_dependencies(primary_type: str, types=None, results=None):
     if types is None:
         types = {}
 
-    if primary_type[len(primary_type)-1] == ']':
+    if primary_type[-1] == "]":
         primary_type = primary_type[:primary_type.rindex('[')]
 
     if (primary_type in results) or (types.get(primary_type) is None):

@@ -19,7 +19,7 @@ from apps.common.layout import split_address
 
 from . import networks, tokens
 from .address import address_from_bytes
-from .abi import abi_decode_single, is_array, typeof_array, parse_array_n
+from .abi import abi_decode_single, is_array, typeof_array
 
 
 async def confirm_typed_domain_brief(ctx, domain_values: dict):
@@ -61,7 +61,7 @@ async def require_confirm_typed_domain(ctx, domain_types: dict, domain_values: d
 TYPED_DATA_BRIEF_FIELDS = 3
 
 
-async def confirm_typed_data_brief(ctx, primary_type: str, fields: []):
+async def confirm_typed_data_brief(ctx, primary_type: str, fields: list):
     page = Text(primary_type, ui.ICON_SEND, icon_color=ui.GREEN)
 
     limit = TYPED_DATA_BRIEF_FIELDS
@@ -92,7 +92,7 @@ async def require_confirm_typed_data(ctx, primary_type: str, data_types: dict, d
             title = limit_str("%s.%s" % (root_name, field_name), 13)
 
         if len(array_offsets) == 0:
-            title += " %d/%d" % (current_field+1, total_fields)
+            title += " %d/%d" % (current_field + 1, total_fields)
 
         return Text(title, ui.ICON_CONFIG, icon_color=ui.ORANGE_ICON)
 
