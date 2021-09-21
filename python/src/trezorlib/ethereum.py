@@ -28,9 +28,6 @@ def int_to_big_endian(value) -> bytes:
     return value.to_bytes((value.bit_length() + 7) // 8, "big")
 
 
-TYPE_NAME_RE = re.compile(r"^\w+")
-
-
 def find_typed_dependencies(
     primary_type: str, types: dict, results: list = None
 ) -> list:
@@ -44,7 +41,7 @@ def find_typed_dependencies(
     if results is None:
         results = []
 
-    m = TYPE_NAME_RE.match(primary_type)
+    m = re.compile(r"^\w+").match(primary_type)
     if m:
         primary_type = m.group(0)
     else:
@@ -53,12 +50,12 @@ def find_typed_dependencies(
     if (primary_type in results) or (types.get(primary_type) is None):
         return results
 
-    results = results + [primary_type]
+    results.append(primary_type)
     for field in types[primary_type]:
         deps = find_typed_dependencies(field["type"], types, results)
         for dep in deps:
             if dep not in results:
-                results = results + [dep]
+                results.append(dep)
 
     return results
 
@@ -82,13 +79,13 @@ def encode_type(primary_type: str, types: dict) -> Tuple[str, Dict]:
         if children is None:
             raise ValueError(f"no type definition specified: {type_name}")
         fields = ",".join([f"{c['type']} {c['name']}" for c in children])
-        result_indexed[type_name] = [field for (_, field) in enumerate(children)]
         result += f"{type_name}({fields})"
+        result_indexed[type_name] = children
 
     return result, result_indexed
 
 
-REQUIRED_TYPED_DATA_PROPERTIES = ["types", "primaryType", "domain", "message"]
+REQUIRED_TYPED_DATA_PROPERTIES = ("types", "primaryType", "domain", "message")
 
 
 def sanitize_typed_data(data: dict) -> dict:
@@ -109,11 +106,11 @@ def is_array(type_name: str) -> bool:
     return False
 
 
-def typeof_array(type_name) -> str:
+def typeof_array(type_name: str) -> str:
     return type_name[: type_name.rindex("[")]
 
 
-def parse_number(arg) -> int:
+def parse_number(arg: Union[int, str]) -> int:
     if isinstance(arg, str):
         return int(arg, 16)
     elif isinstance(arg, int):
@@ -123,7 +120,11 @@ def parse_number(arg) -> int:
 
 
 def parse_type_n(type_name: str) -> int:
-    """Parse N from type<N>"""
+    """Parse N from type<N>.
+
+    Example: "uint256" -> 256
+    """
+    # TODO: we could use regex for this to take number from the end
     accum = []
     for c in type_name:
         if c.isdigit():
@@ -141,7 +142,7 @@ def parse_array_n(type_name: str) -> Union[int, str]:
         return "dynamic"
 
     start_idx = type_name.rindex("[") + 1
-    return int(type_name[start_idx:])
+    return int(type_name[start_idx:-1])
 
 
 def encode_value(type_name: str, value) -> bytes:

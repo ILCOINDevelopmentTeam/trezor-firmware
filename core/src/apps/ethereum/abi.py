@@ -40,7 +40,7 @@ def abi_encode_single(type_name, arg) -> bytes:
         size = parse_type_n(type_name)
         if size < 1 or size > 32:
             raise ValueError("invalid bytes<N> width: %d" % size)
-        if not (isinstance(arg, bytes) or isinstance(arg, bytearray)):
+        if not isinstance(arg, (bytes, bytearray)):
             raise ValueError("arg for bytes is not bytes")
 
         return bytearray(set_length_right(arg, 32))
@@ -82,7 +82,7 @@ def abi_encode(types: list, values: list) -> bytearray:
         else:
             head_len += 32
 
-    for i in range(0, len(types)):
+    for i in range(len(types)):
         type_name = types[i]
         value = values[i]
         buf = abi_encode_single(type_name, value)
@@ -105,18 +105,6 @@ def abi_encode(types: list, values: list) -> bytearray:
         res.extend(x)
 
     return res
-
-
-def abi_decode(types: list, data: list, packed: bool = True) -> list:
-    ret = []
-    offset = 0
-
-    for i in range(0, len(types)):
-        parsed_type = parse_type(types[i])
-        ret.append(abi_decode_single(parsed_type["name"], data[i], packed, offset))
-        offset += parsed_type["memory_usage"]
-
-    return ret
 
 
 def abi_decode_single(
@@ -156,7 +144,7 @@ def abi_decode_single(
             offset += 32
 
         sub_array = parsed_type["sub_array"]
-        for i in range(0, size):
+        for i in range(size):
             decoded = abi_decode_single(sub_array, data, packed, offset)
             ret.append(decoded)
             offset += sub_array["memory_usage"]
@@ -292,7 +280,7 @@ def parse_array_n(type_name: str):
         return "dynamic"
 
     start_idx = type_name.rindex("[") + 1
-    return int(type_name[start_idx:])
+    return int(type_name[start_idx:-1])
 
 
 def is_dynamic(type_name: str) -> bool:

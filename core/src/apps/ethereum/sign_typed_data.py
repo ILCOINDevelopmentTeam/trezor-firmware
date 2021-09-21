@@ -35,10 +35,10 @@ async def sign_typed_data(ctx, msg, keychain):
         node.private_key(), data_hash, False, secp256k1.CANONICAL_SIG_ETHEREUM
     )
 
-    sig = EthereumTypedDataRequest()
-    sig.address = address.address_from_bytes(node.ethereum_pubkeyhash())
-    sig.signature = signature[1:] + bytearray([signature[0]])
-    return sig
+    return EthereumTypedDataRequest(
+        address=address.address_from_bytes(node.ethereum_pubkeyhash()),
+        signature=signature[1:] + bytearray([signature[0]]),
+    )
 
 
 async def generate_typed_data_hash(ctx, use_v4: bool = True) -> bytes:
@@ -86,7 +86,7 @@ async def collect_domain_types(ctx) -> dict:
 
     children = []
     if root_type.member_children:
-        for i in range(0, root_type.member_children):
+        for i in range(root_type.member_children):
             dep = await request_member_type(ctx, [0, 0, i])
             children.append(
                 {
@@ -125,10 +125,10 @@ async def collect_types(
         elif member_type_offset == 0:
             primary_type = type_name
 
-        if not (type_name in types):
+        if type_name not in types:
             types[type_name] = []
             if member.member_children:
-                for i in range(0, member.member_children):
+                for i in range(member.member_children):
                     dep = await request_member_type(ctx, member_type_path + [i])
                     types[type_name].append(
                         {
@@ -197,7 +197,7 @@ def encode_field(
         raise ValueError("missing value for field %s of type %s" % (name, type_name))
 
     if type_name == "bytes32":
-        if not (isinstance(value, bytes) or isinstance(value, bytearray)):
+        if not isinstance(value, (bytes, bytearray)):
             raise ValueError(
                 "value for field %s (type %s) expected to be bytes or bytearray"
                 % (name, type_name)
@@ -209,7 +209,7 @@ def encode_field(
         if isinstance(value, str):
             value = bytes(value, encoding="utf8")
             return "bytes32", keccak256(value)
-        elif not (isinstance(value, bytes) or isinstance(value, bytearray)):
+        elif not isinstance(value, (bytes, bytearray)):
             raise ValueError(
                 "value for field %s (type %s) expected to be bytes, bytearray or str"
                 % (name, type_name)
@@ -267,7 +267,7 @@ async def collect_values(
     values = {}
     struct = types.get(primary_type)
 
-    for fieldIdx in range(0, len(struct)):
+    for fieldIdx in range(len(struct)):
         field = struct[fieldIdx]
         field_name = field["name"]
         field_type = field["type"]
@@ -293,7 +293,7 @@ async def collect_values(
                 type_array = res.member_array_n
 
             values[field_name] = []
-            for elemIdx in range(0, type_array):
+            for elemIdx in range(type_array):
                 elem = await collect_values(
                     ctx, res.member_type, types, member_value_path + [elemIdx]
                 )
@@ -336,7 +336,9 @@ def encode_type(primary_type: str, types: dict) -> bytes:
     return result
 
 
-def find_typed_dependencies(primary_type: str, types=None, results=None):
+def find_typed_dependencies(
+    primary_type: str, types: dict = None, results: list = None
+) -> list:
     """
     Finds all types within a type definition object
 
@@ -359,27 +361,29 @@ def find_typed_dependencies(primary_type: str, types=None, results=None):
     for field in types[primary_type]:
         deps = find_typed_dependencies(field["type"], types, results)
         for dep in deps:
-            if not (dep in results):
+            if dep not in results:
                 results = results + [dep]
 
     return results
 
 
-async def request_member_type(ctx, member_path):
+async def request_member_type(ctx, member_path: list) -> EthereumTypedDataAck:
     """
     Requests a type of member at `member_path` from the client
     """
-    req = EthereumTypedDataRequest()
-    req.member_path = member_path
-    req.expect_type = True
+    req = EthereumTypedDataRequest(
+        member_path=member_path,
+        expect_type=True,
+    )
     return await ctx.call(req, EthereumTypedDataAck)
 
 
-async def request_member_value(ctx, member_path):
+async def request_member_value(ctx, member_path: list) -> EthereumTypedDataAck:
     """
     Requests a value of member at `member_path` from the client
     """
-    req = EthereumTypedDataRequest()
-    req.member_path = member_path
-    req.expect_type = False
+    req = EthereumTypedDataRequest(
+        member_path=member_path,
+        expect_type=False,
+    )
     return await ctx.call(req, EthereumTypedDataAck)
