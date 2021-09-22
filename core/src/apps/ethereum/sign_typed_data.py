@@ -1,7 +1,7 @@
 from trezor.crypto.curve import secp256k1
 from trezor.crypto.hashlib import sha3_256
-from trezor.messages.EthereumTypedDataAck import EthereumTypedDataAck
-from trezor.messages.EthereumTypedDataRequest import EthereumTypedDataRequest
+from trezor.messages import EthereumTypedDataAck
+from trezor.messages import EthereumTypedDataRequest
 from trezor.utils import HashWriter
 
 from apps.common import paths
