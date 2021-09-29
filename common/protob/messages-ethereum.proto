@@ -138,44 +138,74 @@ message EthereumMessageSignature {
     required string address = 3;     // address used to sign the message
 }
 
-
 /**
  * Request: Ask device to sign typed data
  * @start
- * @next EthereumTypedDataRequest
+ * @next EthereumTypedDataStructRequest
+ * @next EthereumTypedDataValueRequest
+ * @next EthereumTypedDataSignature
  * @next Failure
  */
 message EthereumSignTypedData {
-    repeated uint32 address_n = 1;           // BIP-32 path to derive the key from master node
-    optional bool use_v4 = 2 [default=true]; // use EIP-712 (v4) for typed data signing
+    repeated uint32 address_n = 1;                       // BIP-32 path to derive the key from master node
+    required string primary_type = 2;                    // name of the root message struct
+    optional bool metamask_v4_compat = 3 [default=true]; // use MetaMask v4 (see https://github.com/MetaMask/eth-sig-util/issues/106)
+}
+
+message EthereumTypedDataStructRequest {
+    required string name = 1; // name of the requested struct
+}
+
+message EthereumTypedDataStructAck {
+    repeated EthereumStructMember members = 1;
+
+    message EthereumStructMember {
+        required EthereumFieldType type = 1;
+        required string name = 2;
+    }
+
+    message EthereumFieldType {
+        required EthereumDataType data_type = 1;
+        optional uint32 size = 2;                   // for integer types: size in bytes (uint8 has size 1, uint256 has size 32)
+                                                    // for bytes types: size in bytes, or unset for dynamic
+                                                    // for arrays: size in elements, or unset for dynamic
+                                                    // for structs: number of members
+                                                    // for string, bool and address: unset
+        optional EthereumFieldType entry_type = 3;  // for array types, type of single entry
+        optional string struct_name = 4;            // for struct types, name of struct
+    }
+
+    enum EthereumDataType {
+        UINT = 1;
+        INT = 2;
+        BYTES = 3;
+        STRING = 4;
+        BOOL = 5;
+        ADDRESS = 6;
+        ARRAY = 7;
+        STRUCT = 8;
+    }
+}
+
+message EthereumTypedDataValueRequest {
+    repeated uint32 member_path = 1; // member path requested by device
+}
+
+message EthereumTypedDataValueAck {
+    required bytes value = 1;
+    // * atomic types: value of the member.
+    //   Length must match the `size` of the corresponding field type.
+    // * array types: number of elements, encoded as uint16.
+    // * struct types: undefined, Trezor will not query a struct field.
 }
 
 /**
- * Response: Device asks for more values from typed data, or returns the signature and address.
- * If member_path is not empty, device awaits the information for this value.
- * Otherwise, the signature field contains the computed data signature.
+ * Response: Signed typed data
  * @end
- * @next EthereumTypedDataAck
- * @next Failure
  */
-message EthereumTypedDataRequest {
-    repeated uint32 member_path = 1; // type or value member path requested by device
-    optional bool expect_type   = 2; // if true, then device expects type info, otherwise value
-    optional bytes signature    = 3; // signature of the message
-    optional string address     = 4; // address used to sign the message
-}
-
-/**
- * Request: Typed data value.
- * If the member is a struct member_value should not be set. If the member is literal num_members should not be set.
- * @next EthereumTypedDataRequest
- */
-message EthereumTypedDataAck {
-    optional string member_name     = 1; // if expect_type was true, should contain memeber name
-    optional string member_type     = 2; // contains member type name
-    optional uint32 member_array_n  = 3; // set to 0 when array is dynamic, None when member is not an array
-    optional uint32 member_children = 4; // if expect_type was true, should contain its children number
-    optional bytes member_value     = 5; // if expect_type was false and value is not struct or array, should contain eth-abi encoded member value
+message EthereumTypedDataSignature {
+    required bytes signature = 1;    // signature of the typed data
+    required string address = 2;     // address used to sign the typed data
 }
 
 /**

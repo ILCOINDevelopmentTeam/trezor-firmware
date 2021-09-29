@@ -103,8 +103,11 @@ if TYPE_CHECKING:
         EthereumVerifyMessage = 65
         EthereumMessageSignature = 66
         EthereumSignTypedData = 464
-        EthereumTypedDataRequest = 465
-        EthereumTypedDataAck = 466
+        EthereumTypedDataStructRequest = 465
+        EthereumTypedDataStructAck = 466
+        EthereumTypedDataValueRequest = 467
+        EthereumTypedDataValueAck = 468
+        EthereumTypedDataSignature = 469
         NEMGetAddress = 67
         NEMAddress = 68
         NEMSignTx = 69
@@ -419,6 +422,16 @@ if TYPE_CHECKING:
         DOWN = 1
         LEFT = 2
         RIGHT = 3
+
+    class EthereumDataType(IntEnum):
+        UINT = 1
+        INT = 2
+        BYTES = 3
+        STRING = 4
+        BOOL = 5
+        ADDRESS = 6
+        ARRAY = 7
+        STRUCT = 8
 
     class NEMMosaicLevy(IntEnum):
         MosaicLevy_Absolute = 1

@@ -1,7 +1,11 @@
 from trezor.crypto.curve import secp256k1
 from trezor.crypto.hashlib import sha3_256
-from trezor.messages import EthereumTypedDataAck
-from trezor.messages import EthereumTypedDataRequest
+from trezor.messages import EthereumTypedDataValueAck
+from trezor.messages import EthereumTypedDataValueRequest
+from trezor.messages import EthereumTypedDataSignature
+from trezor.messages import EthereumTypedDataStructAck
+from trezor.messages import EthereumTypedDataStructRequest
+from trezor.enums import EthereumDataType
 from trezor.utils import HashWriter
 
 from apps.common import paths
@@ -26,7 +30,7 @@ def keccak256(message):
 
 @with_keychain_from_path(*PATTERNS_ADDRESS)
 async def sign_typed_data(ctx, msg, keychain):
-    data_hash = await generate_typed_data_hash(ctx, msg.use_v4)
+    data_hash = await generate_typed_data_hash(ctx, msg.primary_type, msg.metamask_v4_compat)
 
     await paths.validate_path(ctx, keychain, msg.address_n)
 
@@ -35,22 +39,36 @@ async def sign_typed_data(ctx, msg, keychain):
         node.private_key(), data_hash, False, secp256k1.CANONICAL_SIG_ETHEREUM
     )
 
-    return EthereumTypedDataRequest(
+    return EthereumTypedDataSignature(
         address=address.address_from_bytes(node.ethereum_pubkeyhash()),
         signature=signature[1:] + bytearray([signature[0]]),
     )
 
 
-async def generate_typed_data_hash(ctx, use_v4: bool = True) -> bytes:
+# TODO: cannot we have a StringEnum instead of IntEnum?
+# OR using the IntEnum for encoding/decoding purposes
+TRANSLATION_DICT = {
+    1: "uint",
+    2: "int",
+    3: "bytes",
+    4: "string",
+    5: "bool",
+    6: "address",
+    7: "array",
+    8: "struct",
+}
+
+
+async def generate_typed_data_hash(ctx, primary_type: str, use_v4: bool = True) -> bytes:
     """
     Generates typed data hash according to EIP-712 specification
     https://eips.ethereum.org/EIPS/eip-712#specification
 
     use_v4 - a flag that enables compatibility with MetaMask's signTypedData_v4 method
     """
-    domain_types = await collect_domain_types(ctx)
+    domain_types = await collect_types(ctx, "EIP712Domain")
+    message_types = await collect_types(ctx, primary_type)
     domain_values = await collect_values(ctx, "EIP712Domain", domain_types, [0])
-    primary_type, message_types = await collect_types(ctx)
     message_values = await collect_values(ctx, primary_type, message_types)
 
     show_domain = await confirm_typed_domain_brief(ctx, domain_values)
@@ -76,72 +94,53 @@ async def generate_typed_data_hash(ctx, use_v4: bool = True) -> bytes:
     return keccak256(b"\x19" + b"\x01" + domain_separator + message_hash)
 
 
-async def collect_domain_types(ctx) -> dict:
+async def collect_types(ctx, type_name: str, types: dict = None) -> dict:
     """
-    Collects domain types from the client
-    """
-    root_type = await request_member_type(ctx, [0, 0])
-    if root_type.member_type != "EIP712Domain":
-        raise ValueError("EIP712 domain not provided")
-
-    children = []
-    if root_type.member_children:
-        for i in range(root_type.member_children):
-            dep = await request_member_type(ctx, [0, 0, i])
-            children.append(
-                {
-                    "type": dep.member_type,
-                    "name": dep.member_name,
-                    "children_num": dep.member_children,
-                    "member_array_n": dep.member_array_n,
-                }
-            )
-
-    types = {
-        "EIP712Domain": children,
-    }
-    return types
-
-
-async def collect_types(
-    ctx, types: dict = None, member_path: list = None
-) -> tuple[str, dict]:
-    """
-    Collects type definitions from the client
+    Recursively collects types from the client
     """
     if types is None:
         types = {}
-    if member_path is None:
-        member_path = [1]
 
-    primary_type = None
-    member_type_offset = 0
-    while member_type_offset < 65536:
-        member_type_path = member_path + [member_type_offset]
-        member = await request_member_type(ctx, member_type_path)
-        type_name = member.member_type
-        if type_name is None:
-            break
-        elif member_type_offset == 0:
-            primary_type = type_name
+    # We already have that type
+    if type_name in types:
+        return types
 
-        if type_name not in types:
-            types[type_name] = []
-            if member.member_children:
-                for i in range(member.member_children):
-                    dep = await request_member_type(ctx, member_type_path + [i])
-                    types[type_name].append(
-                        {
-                            "type": dep.member_type,
-                            "name": dep.member_name,
-                            "children_num": dep.member_children,
-                            "member_array_n": dep.member_array_n,
-                        }
-                    )
+    req = EthereumTypedDataStructRequest(
+        name=type_name
+    )
+    res = await ctx.call(req, EthereumTypedDataStructAck)
 
-        member_type_offset += 1
+    new_types = set()
+    children = []
+    for member in res.members:
+        if member.type.data_type == EthereumDataType.STRUCT:
+            new_types.add(member.type.struct_name)
+            type = member.type.struct_name
+        else:
+            type = TRANSLATION_DICT[member.type.data_type]
+            # Adding the size info for certain types
+            if member.type.size is not None:
+                if type in ["int", "uint"]:
+                    type = type + str(int(member.type.size * 8))
+                elif type == "bytes":
+                    type = type + str(int(member.type.size))
+        children.append(
+            {
+                "type": type,
+                "name": member.name,
+                "size": member.type.size,
+                "struct_name": member.type.struct_name,
+            }
+        )
 
-    return primary_type, types
+    types[type_name] = children
+
+    # Recursively accounting for all the new types
+    if len(new_types) > 0:
+        for new_type in new_types:
+            types = await collect_types(ctx, new_type, types)
+
+    return types
 
 
 def hash_struct(
@@ -271,35 +270,17 @@ async def collect_values(
         field = struct[fieldIdx]
         field_name = field["name"]
         field_type = field["type"]
-        type_children = field["children_num"]
-        type_array = field["member_array_n"]
         member_value_path = member_path + [fieldIdx]
 
-        res = await request_member_value(ctx, member_value_path)
-        if res.member_type is None:
-            raise ValueError(
-                "value of %s in %s is not set in data" % (field_name, primary_type)
-            )
-
-        if not (res.member_value is None):
-            values[field_name] = res.member_value
-        elif type_children and type_children > 0:
+        # Structs need to be handled recursively
+        if field_type in types:
+            struct_name = field["struct_name"]
             values[field_name] = await collect_values(
-                ctx, field_type, types, member_value_path
+                ctx, struct_name, types, member_value_path
             )
-        elif not (type_array is None):
-            if type_array == 0:
-                # override with dynamic size we've just got from values
-                type_array = res.member_array_n
-
-            values[field_name] = []
-            for elemIdx in range(type_array):
-                elem = await collect_values(
-                    ctx, res.member_type, types, member_value_path + [elemIdx]
-                )
-                values[field_name].append(elem)
         else:
-            values[field_name] = None
+            res = await request_member_value(ctx, member_value_path)
+            values[field_name] = res.value
 
     return values
 
@@ -367,23 +348,11 @@ def find_typed_dependencies(
     return results
 
 
-async def request_member_type(ctx, member_path: list) -> EthereumTypedDataAck:
-    """
-    Requests a type of member at `member_path` from the client
-    """
-    req = EthereumTypedDataRequest(
-        member_path=member_path,
-        expect_type=True,
-    )
-    return await ctx.call(req, EthereumTypedDataAck)
-
-
-async def request_member_value(ctx, member_path: list) -> EthereumTypedDataAck:
+async def request_member_value(ctx, member_path: list) -> EthereumTypedDataValueAck:
     """
     Requests a value of member at `member_path` from the client
     """
-    req = EthereumTypedDataRequest(
+    req = EthereumTypedDataValueRequest(
         member_path=member_path,
-        expect_type=False,
     )
-    return await ctx.call(req, EthereumTypedDataAck)
+    return await ctx.call(req, EthereumTypedDataValueAck)

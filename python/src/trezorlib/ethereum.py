@@ -16,7 +16,7 @@
 
 import json
 import re
-from typing import Dict, Tuple, Union, List
+from typing import Any, Dict, Tuple, Union, List
 
 from eth_abi.packed import encode_single_packed
 
@@ -165,6 +165,58 @@ def encode_value(type_name: str, value) -> bytes:
     return encode_single_packed(type_name, value)
 
 
+def get_byte_size_for_int_type(int_type: str) -> int:
+    return parse_type_n(int_type) // 8
+
+
+def get_field_type(struct: dict, types: dict) -> messages.EthereumFieldType:
+    data_type = None
+    size = None
+    entry_type = None
+    struct_name = None
+
+    struct_type = struct["type"]
+    # ? should we assign None or not, when it is default - maybe explicit is better ?
+    if is_array(struct_type):
+        # TODO: is not tested
+        data_type = messages.EthereumDataType.ARRAY
+        array_size = parse_array_n(struct_type)
+        size = None if array_size == "dynamic" else array_size
+        member_typename = typeof_array(struct_type)
+        entry_type = get_field_type(member_typename)
+    elif struct_type.startswith("uint"):
+        data_type = messages.EthereumDataType.UINT
+        size = get_byte_size_for_int_type(struct_type)
+    elif struct_type.startswith("int"):
+        data_type = messages.EthereumDataType.INT
+        size = get_byte_size_for_int_type(struct_type)
+    elif struct_type.startswith("bytes"):
+        data_type = messages.EthereumDataType.BYTES
+        size = None if struct_type == "bytes" else parse_type_n(struct_type)
+    elif struct_type == "string":
+        data_type = messages.EthereumDataType.STRING
+        size = None
+    # ? maybe startswith("bool") ?
+    elif struct_type == "bool":
+        data_type = messages.EthereumDataType.BOOL
+        size = None
+    elif struct_type == "address":
+        data_type = messages.EthereumDataType.ADDRESS
+        size = None
+    elif struct_type in types:
+        data_type = messages.EthereumDataType.STRUCT
+        size = len(struct)
+        struct_name = struct_type
+    else:
+        raise ValueError(f"Unsupported struct type: {struct_type}")
+
+    return messages.EthereumFieldType(
+        data_type=data_type,
+        size=size,
+        entry_type=entry_type,
+        struct_name=struct_name,
+    )
+
 # ====== Client functions ====== #
 
 
@@ -239,7 +291,7 @@ def sign_tx_eip1559(
     chain_id,
     max_gas_fee,
     max_priority_fee,
-    access_list=()
+    access_list=(),
 ):
     length = len(data)
     data, chunk = data[1024:], data[:1024]
@@ -273,7 +325,7 @@ def sign_message(client, n, message):
     return client.call(messages.EthereumSignMessage(address_n=n, message=message))
 
 
-@expect(messages.EthereumTypedDataRequest)
+@expect(messages.EthereumTypedDataSignature)
 def sign_typed_data(client, n: List[int], use_v4: bool, data_string: str):
     data = json.loads(data_string)
     data = sanitize_typed_data(data)
@@ -281,125 +333,56 @@ def sign_typed_data(client, n: List[int], use_v4: bool, data_string: str):
     _, domain_types = encode_type("EIP712Domain", data["types"])
     _, message_types = encode_type(data["primaryType"], data["types"])
 
-    request = messages.EthereumSignTypedData(address_n=n, use_v4=use_v4)
+    request = messages.EthereumSignTypedData(
+        address_n=n,
+        primary_type=data["primaryType"],
+        metamask_v4_compat=use_v4
+    )
     response = client.call(request)
 
-    message_types_keys = list(message_types.keys())
-    while len(response.member_path) > 0:
-        root_index = response.member_path[0]
-        type_index = response.member_path[1] if len(response.member_path) > 1 else None
-        if root_index == 0:
-            if response.expect_type and (type_index > 0):
-                client.cancel()
-                raise ValueError("unexpected type_index when requesting domain type")
+    while isinstance(response, messages.EthereumTypedDataStructRequest):
+        struct_name = response.name
 
+        members = []
+        for struct in data["types"][struct_name]:
+            field_type = get_field_type(struct, data["types"])
+            struct_member = messages.EthereumStructMember(
+                type=field_type,
+                name=struct["name"],
+            )
+            members.append(struct_member)
+
+        request = messages.EthereumTypedDataStructAck(
+            members=members
+        )
+        response = client.call(request)
+
+    while isinstance(response, messages.EthereumTypedDataValueRequest):
+        root_index = response.member_path[0]
+        if root_index == 0:
             member_typename = "EIP712Domain"
             member_types = domain_types
             member_data = data["domain"]
         elif root_index == 1:
-            if response.expect_type:
-                # when device expects type, the path [1, x] points to element x in types linear layout
-                member_typename = (
-                    message_types_keys[type_index]
-                    if type_index < len(message_types_keys)
-                    else None
-                )
-            else:
-                # when device expects value, the path [1, x] points to field x inside primaryType.
-                member_typename = data["primaryType"]
+            # when device expects value, the path [1, x] points to field x inside primaryType.
+            member_typename = data["primaryType"]
             member_types = message_types
             member_data = data["message"]
         else:
             client.cancel()
             raise ValueError("unknown root")
 
-        if response.expect_type:
-            member_name = None
-            for index in response.member_path[2:]:
-                member_def = member_types[member_typename][index]
-                member_name = member_def["name"]
-                member_typename = member_def["type"]
+        # It can be asking for a nested structure
+        for index in response.member_path[1:]:
+            member_def = member_types[member_typename][index]
+            member_typename = member_def["type"]
+            member_data = member_data[member_def["name"]]
 
-            request = messages.EthereumTypedDataAck(
-                member_name=member_name,
-                member_type=member_typename,
-                member_value=None,
-            )
+        request = messages.EthereumTypedDataValueAck(
+            value=encode_value(member_typename, member_data)
+        )
 
-            if is_array(member_typename):
-                array_type = typeof_array(member_typename)
-                is_struct = array_type in member_types
-                if is_struct:
-                    array_size = parse_array_n(member_typename)
-                    if array_size == "dynamic":
-                        request.member_array_n = 0
-                    else:
-                        request.member_array_n = array_size
-            else:
-                is_struct = member_typename in member_types
-                if is_struct:
-                    request.member_children = len(member_types[member_typename])
-
-            response = client.call(request)
-
-        else:
-            array_size = None
-            for index in response.member_path[1:]:
-                if array_size is None:
-                    member_def = member_types[member_typename][index]
-                    member_data = member_data[member_def["name"]]
-                    member_typename = member_def["type"]
-
-                    if is_array(member_typename):
-                        array_size = parse_array_n(member_typename)
-                        member_typename = typeof_array(member_typename)
-                else:
-                    if array_size != "dynamic":
-                        if index > array_size - 1:
-                            raise ValueError("array offset out of bounds")
-
-                    # in array index offsets the array data, not type
-                    member_data = member_data[index]
-
-                    # in array, there is an array
-                    if is_array(member_typename):
-                        array_size = parse_array_n(member_typename)
-                        member_typename = typeof_array(member_typename)
-                    else:
-                        # looking at a plain type now
-                        array_size = None
-
-            request = messages.EthereumTypedDataAck(
-                member_type=member_typename,
-            )
-
-            if array_size:
-                # strip arrays from type to see if it's a struct
-                base_type = member_typename
-                while is_array(base_type):
-                    base_type = typeof_array(base_type)
-
-                # is it?
-                is_struct = base_type in member_types
-                if is_struct:
-                    request.member_type = base_type
-
-                    if array_size == "dynamic":
-                        request.member_array_n = len(member_data)
-                    else:
-                        request.member_array_n = array_size
-                else:
-                    # primitive type, pass it as-is
-                    request.member_type = member_typename
-                    request.member_value = encode_value(member_typename, member_data)
-            else:
-                # not in array
-                is_struct = member_typename in member_types
-                request.member_type = member_typename
-                if not is_struct:
-                    request.member_value = encode_value(member_typename, member_data)
-
-            response = client.call(request)
+        response = client.call(request)
 
     return response
 

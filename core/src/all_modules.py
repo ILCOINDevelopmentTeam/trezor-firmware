@@ -402,6 +402,8 @@ if not utils.BITCOIN_ONLY:
     import trezor.enums.CardanoTxSigningMode
     trezor.enums.CardanoTxWitnessType
     import trezor.enums.CardanoTxWitnessType
+    trezor.enums.EthereumDataType
+    import trezor.enums.EthereumDataType
     trezor.enums.NEMImportanceTransferMode
     import trezor.enums.NEMImportanceTransferMode
     trezor.enums.NEMModificationType
