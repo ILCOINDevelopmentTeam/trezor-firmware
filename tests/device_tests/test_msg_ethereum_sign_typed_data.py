@@ -24,7 +24,7 @@ PATH = "m/44'/60'/0'/0/0"
 USE_V4 = True
 
 EXPECTED_ADDRESS = "0x73d0385F4d8E00C5e6504C6030F47BF6212736A8"
-EXPECTED_SIG = "0x74f1fb05738dfd1bf80d034099b2e5630697e41b3da74fd10168330ec0a592f1381ba191bfc122f530b82d5e8b03bb7ddc239ab21f1bc71f018438b2f9655cd01c"
+EXPECTED_SIG = "0x2c2d8c7c1facf5bdcd997b5435bb42f3f4170a111ce079c94b5d1e34414f76560c4600d2167568e052ab846555bd590de93bb230987766c636613262eaeb8bdc1c"
 
 CONTENT = """
 {
@@ -76,7 +76,7 @@ CONTENT = """
     "domain": {
         "name": "Ether Mail",
         "version": "1",
-        "chainId": "1",
+        "chainId": 1,
         "verifyingContract": "0x1e0Ae8205e9726E6F296ab8869160A6423E2337E"
     },
     "message": {

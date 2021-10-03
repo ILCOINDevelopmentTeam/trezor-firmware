@@ -4625,13 +4625,13 @@ class EthereumTypedDataValueRequest(protobuf.MessageType):
 class EthereumTypedDataValueAck(protobuf.MessageType):
     MESSAGE_WIRE_TYPE = 468
     FIELDS = {
-        1: protobuf.Field("value", "bytes", repeated=False, required=True),
+        1: protobuf.Field("value", "string", repeated=False, required=True),
     }
 
     def __init__(
         self,
         *,
-        value: "bytes",
+        value: "str",
     ) -> None:
         self.value = value
 
@@ -4711,23 +4711,23 @@ class EthereumFieldType(protobuf.MessageType):
     MESSAGE_WIRE_TYPE = None
     FIELDS = {
         1: protobuf.Field("data_type", "EthereumDataType", repeated=False, required=True),
-        2: protobuf.Field("size", "uint32", repeated=False, required=False),
-        3: protobuf.Field("entry_type", "EthereumFieldType", repeated=False, required=False),
-        4: protobuf.Field("struct_name", "string", repeated=False, required=False),
+        2: protobuf.Field("type_name", "string", repeated=False, required=True),
+        3: protobuf.Field("size", "uint32", repeated=False, required=False),
+        4: protobuf.Field("entry_type", "EthereumFieldType", repeated=False, required=False),
     }
 
     def __init__(
         self,
         *,
         data_type: "EthereumDataType",
+        type_name: "str",
         size: Optional["int"] = None,
         entry_type: Optional["EthereumFieldType"] = None,
-        struct_name: Optional["str"] = None,
     ) -> None:
         self.data_type = data_type
+        self.type_name = type_name
         self.size = size
         self.entry_type = entry_type
-        self.struct_name = struct_name
 
 
 class MoneroTransactionSourceEntry(protobuf.MessageType):

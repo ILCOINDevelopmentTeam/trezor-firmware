@@ -9,81 +9,132 @@ if not utils.BITCOIN_ONLY:
         encode_field,
         find_typed_dependencies,
         keccak256,
+        EthereumDataType,
     )
 
-TYPED_DATA = {
-    "types": {
-        "EIP712Domain": [
-            {"name": "name", "type": "string"},
-            {"name": "version", "type": "string"},
-            {"name": "chainId", "type": "uint256"},
-            {"name": "verifyingContract", "type": "address"},
-        ],
-        "Person": [
-            {"name": "name", "type": "string"},
-            {"name": "wallet", "type": "address"},
-        ],
-        "Mail": [
-            {"name": "from", "type": "Person"},
-            {"name": "to", "type": "Person"},
-            {"name": "contents", "type": "string"},
-        ],
-    },
-    "primaryType": "Mail",
-    "domain": {
-        "name": "Ether Mail",
-        "version": "1",
-        "chainId": "1",
-        "verifyingContract": "0x1e0Ae8205e9726E6F296ab8869160A6423E2337E",
-    },
-    "message": {
-        "from": {"name": "Cow", "wallet": "0xc0004B62C5A39a728e4Af5bee0c6B4a4E54b15ad"},
-        "to": {"name": "Bob", "wallet": "0x54B0Fa66A065748C40dCA2C7Fe125A2028CF9982"},
-        "contents": "Hello, Bob!",
-    },
+DOMAIN_TYPES = {
+    "EIP712Domain": [
+        {
+            "size": None,
+            "data_type": EthereumDataType.STRING,
+            "name": "name",
+            "type_name": "string",
+        },
+        {
+            "size": None,
+            "data_type": EthereumDataType.STRING,
+            "name": "version",
+            "type_name": "string",
+        },
+        {
+            "size": 32,
+            "data_type": EthereumDataType.UINT,
+            "name": "chainId",
+            "type_name": "uint256",
+        },
+        {
+            "size": None,
+            "data_type": EthereumDataType.ADDRESS,
+            "name": "verifyingContract",
+            "type_name": "address",
+        },
+    ]
+}
+MESSAGE_TYPES = {
+    "Mail": [
+        {
+            "size": 2,
+            "data_type": EthereumDataType.STRUCT,
+            "name": "from",
+            "type_name": "Person",
+        },
+        {
+            "size": 2,
+            "data_type": EthereumDataType.STRUCT,
+            "name": "to",
+            "type_name": "Person",
+        },
+        {
+            "size": None,
+            "data_type": EthereumDataType.STRING,
+            "name": "contents",
+            "type_name": "string",
+        },
+    ],
+    "Person": [
+        {
+            "size": None,
+            "data_type": EthereumDataType.STRING,
+            "name": "name",
+            "type_name": "string",
+        },
+        {
+            "size": None,
+            "data_type": EthereumDataType.ADDRESS,
+            "name": "wallet",
+            "type_name": "address",
+        },
+    ],
+}
+# Micropython does not allow for some easy dict merge, being python3.4
+ALL_TYPES = {
+    "EIP712Domain": DOMAIN_TYPES["EIP712Domain"],
+    "Mail": MESSAGE_TYPES["Mail"],
+    "Person": MESSAGE_TYPES["Person"],
+}
+
+DOMAIN_VALUES = {
+    "verifyingContract": "0x1e0Ae8205e9726E6F296ab8869160A6423E2337E",
+    "chainId": "1",
+    "name": "Ether Mail",
+    "version": "1",
+}
+MESSAGE_VALUES = {
+    "contents": "Hello, Bob!",
+    "to": {"name": "Bob", "wallet": "0x54B0Fa66A065748C40dCA2C7Fe125A2028CF9982"},
+    "from": {"name": "Cow", "wallet": "0xc0004B62C5A39a728e4Af5bee0c6B4a4E54b15ad"},
 }
 
 
 @unittest.skipUnless(not utils.BITCOIN_ONLY, "altcoin")
 class TestEthereumSignTypedData(unittest.TestCase):
     def test_hash_struct(self):
-        primary_type = "EIP712Domain"
-        use_v4 = True
-        data = {
-            "verifyingContract": b"\x1e\n\xe8 ^\x97&\xe6\xf2\x96\xab\x88i\x16\nd#\xe23~",
-            "chainId": b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01",
-            "name": b"Ether Mail",
-            "version": b"1",
-        }
+        """These final expected results generated with the use of eth_account library"""
+        res = hash_struct(
+            primary_type="EIP712Domain",
+            data=DOMAIN_VALUES,
+            types=DOMAIN_TYPES,
+            use_v4=True,
+        )
+        expected = b"\x97\xd6\xf57t\xb8\x10\xfb\xda'\xe0\x91\xc0<jmh\x15\xdd\x12p\xc2\xe6.\x82\xc6\x91|\x1e\xffwK"
+        self.assertEqual(res, expected)
 
         res = hash_struct(
-            primary_type=primary_type,
-            data=data,
-            types=TYPED_DATA["types"],
-            use_v4=use_v4,
+            primary_type="Mail",
+            data=MESSAGE_VALUES,
+            types=MESSAGE_TYPES,
+            use_v4=True,
         )
-        expected = b"\xe5\xc3?\xd0n\xbaa\xacE\x18\xdc\x02d\x07\xd2\x8d\x1a\xbdH\xfcK\x07\xe0~#\x10\xaf\xb2[GV\xf4"
+        expected = b"\xeae)\xf0\xee\x9e\xb0\xb2\x07\xb5\xa8\xb0\xeb\xfag=9\x8djx&(\x18\xda\x1d'\x0b\xd18\xf8\x1f\x03"
         self.assertEqual(res, expected)
 
     def test_encode_data(self):
-        primary_type = "EIP712Domain"
-        use_v4 = True
-        data = {
-            "verifyingContract": b"\x1e\n\xe8 ^\x97&\xe6\xf2\x96\xab\x88i\x16\nd#\xe23~",
-            "chainId": b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01",
-            "name": b"Ether Mail",
-            "version": b"1",
-        }
+        res = encode_data(
+            primary_type="EIP712Domain",
+            data=DOMAIN_VALUES,
+            types=DOMAIN_TYPES,
+            use_v4=True,
+        )
+        expected = b"\xc7\x0e\xf0f8S[H\x81\xfa\xfc\xac\x82\x87\xe2\x10\xe3v\x9f\xf1\xa8\xe9\x1f\x1b\x95\xd6$na\xe4\xd3\xc6\xc8\x9e\xfd\xaaT\xc0\xf2\x0cz\xdfa(\x82\xdf\tP\xf5\xa9Qc~\x03\x07\xcd\xcbLg/)\x8b\x8b\xc6\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x1e\n\xe8 ^\x97&\xe6\xf2\x96\xab\x88i\x16\nd#\xe23~"
+        self.assertEqual(res, expected)
 
         res = encode_data(
-            primary_type=primary_type,
-            data=data,
-            types=TYPED_DATA["types"],
-            use_v4=use_v4,
+            primary_type="Mail",
+            data=MESSAGE_VALUES,
+            types=MESSAGE_TYPES,
+            use_v4=True,
         )
-        expected = bytearray(
-            b"\x8bs\xc3\xc6\x9b\xb8\xfe=Q.\xccL\xf7Y\xccy#\x9f{\x17\x9b\x0f\xfa\xca\xa9\xa7]R+9@\x0f\xc7\x0e\xf0f8S[H\x81\xfa\xfc\xac\x82\x87\xe2\x10\xe3v\x9f\xf1\xa8\xe9\x1f\x1b\x95\xd6$na\xe4\xd3\xc6\xc8\x9e\xfd\xaaT\xc0\xf2\x0cz\xdfa(\x82\xdf\tP\xf5\xa9Qc~\x03\x07\xcd\xcbLg/)\x8b\x8b\xc6\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x1e\n\xe8 ^\x97&\xe6\xf2\x96\xab\x88i\x16\nd#\xe23~\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-        )
+        expected = b"${\xf6.\x89\xe8\xab\xc6g\x02\x1e\xa5\xe4hf\xad\xbe\xf8\x0f\xb0\x01\xc2\x17-\xf9#\n0A/\x13\xa15'H\x1b_\xa5a5\x06\x04\xa6\rsOI\xee\x90\x7f\x17O[\xa6\xbby\x1a\xabAun\xce~\xd1\xb5\xaa\xdf1T\xa2a\xab\xdd\x90\x86\xfcb{a\xef\xca&\xaeW\x02p\x1d\x05\xcd#\x05\xf7\xc5*/\xc8"
         self.assertEqual(res, expected)
 
     def test_encode_type(self):
@@ -103,30 +154,28 @@ class TestEthereumSignTypedData(unittest.TestCase):
         )
 
         for primary_type, expected in VECTORS:
-            res = encode_type(primary_type=primary_type, types=TYPED_DATA["types"])
+            res = encode_type(primary_type=primary_type, types=ALL_TYPES)
             self.assertEqual(res, expected)
-
-        with self.assertRaises(ValueError):
-            encode_type(primary_type="UnexistingType", types=TYPED_DATA["types"])
 
     def test_hash_type(self):
         VECTORS = (
             (
                 "EIP712Domain",
-                keccak256(b"EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)")
+                keccak256(
+                    b"EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
+                ),
             ),
-            (
-                "Person",
-                keccak256(b"Person(string name,address wallet)")
-            ),
+            ("Person", keccak256(b"Person(string name,address wallet)")),
             (
                 "Mail",
-                keccak256(b"Mail(Person from,Person to,string contents)Person(string name,address wallet)")
+                keccak256(
+                    b"Mail(Person from,Person to,string contents)Person(string name,address wallet)"
+                ),
             ),
         )
 
         for primary_type, expected in VECTORS:
-            res = hash_type(primary_type=primary_type, types=TYPED_DATA["types"])
+            res = hash_type(primary_type=primary_type, types=ALL_TYPES)
             self.assertEqual(res, expected)
 
     def test_find_typed_dependencies(self):
@@ -154,42 +203,46 @@ class TestEthereumSignTypedData(unittest.TestCase):
         )
 
         for primary_type, expected in VECTORS:
-            res = find_typed_dependencies(primary_type=primary_type, types=TYPED_DATA["types"])
+            res = find_typed_dependencies(primary_type=primary_type, types=ALL_TYPES)
             self.assertEqual(res, expected)
 
     def test_encode_field(self):
-        use_v4 = True
-
         VECTORS = (
             (
-                {"type": "string", "name": "name"},
-                b"Ether Mail",
-                keccak256(b"Ether Mail"),
+                {"data_type": EthereumDataType.STRING, "size": None},
+                "Ether Mail",
+                keccak256("Ether Mail"),
             ),
             (
-                {"type": "string", "name": "version"},
-                b"1",
-                keccak256(b"1"),
+                {"data_type": EthereumDataType.STRING, "size": None},
+                "1",
+                keccak256("1"),
             ),
             (
-                {"type": "uint256", "name": "chainId"},
+                {"data_type": EthereumDataType.UINT, "size": 32},
+                "1",
                 b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01",
+            ),
+            (
+                {"data_type": EthereumDataType.ADDRESS, "size": None},
+                "0x1e0Ae8205e9726E6F296ab8869160A6423E2337E",
+                b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x1e\n\xe8 ^\x97&\xe6\xf2\x96\xab\x88i\x16\nd#\xe23~",
+            ),
+            (
+                {"data_type": EthereumDataType.BOOL, "size": None},
+                True,
                 b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01",
             ),
             (
-                {"type": "address", "name": "verifyingContracts"},
-                b"\x1e\n\xe8 ^\x97&\xe6\xf2\x96\xab\x88i\x16\nd#\xe23~",
-                b"\x1e\n\xe8 ^\x97&\xe6\xf2\x96\xab\x88i\x16\nd#\xe23~",
+                {"data_type": EthereumDataType.BOOL, "size": None},
+                False,
+                b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
             ),
         )
 
         for field, value, expected in VECTORS:
-            _, res = encode_field(
-                use_v4=use_v4,
-                in_array=False,
-                types=TYPED_DATA["types"],
-                name=field["name"],
-                type_name=field["type"],
+            res = encode_field(
+                field=field,
                 value=value,
             )
             self.assertEqual(res, expected)

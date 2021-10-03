@@ -1,7 +1,7 @@
 from ubinascii import hexlify
 
 from trezor import ui
-from trezor.enums import ButtonRequestType
+from trezor.enums import ButtonRequestType, EthereumDataType
 from trezor.strings import format_amount
 from trezor.ui.layouts import (
     confirm_address,
@@ -17,18 +17,17 @@ from trezor.utils import chunks
 from apps.common.confirm import confirm, require_confirm, require_hold_to_confirm
 
 from . import networks, tokens
-from .abi import abi_decode_single, is_array, typeof_array
 from .address import address_from_bytes
 
 
 async def confirm_typed_domain_brief(ctx, domain_values: dict):
     page = Text("Typed Data", ui.ICON_SEND, icon_color=ui.GREEN)
 
-    domain_name = abi_decode_single("string", domain_values.get("name"))
-    domain_version = abi_decode_single("string", domain_values.get("version"))
+    domain_name = domain_values.get("name")
+    domain_version = domain_values.get("version")
 
-    page.bold("%s" % domain_name)
-    page.normal("%s" % domain_version)
+    page.bold("Name: %s" % domain_name)
+    page.normal("Version: %s" % domain_version)
     page.br()
     page.mono("View EIP712Domain?")
 
@@ -49,8 +48,8 @@ async def require_confirm_typed_domain(ctx, domain_types: dict, domain_values: d
             make_field_page(
                 title="EIP712Domain %d/%d" % (len(pages) + 1, len(domain_types)),
                 field_name=limit_str(type_def["name"]),
-                type_name=limit_str(type_def["type"]),
-                field_value=abi_decode_single(type_def["type"], value),
+                type_name=limit_str(type_def["type_name"]),
+                field_value=value,
             )
         )
 
@@ -111,10 +110,10 @@ async def require_confirm_typed_data(
         type_view_pages = []
 
         for (field_idx, field) in enumerate(type_def):
-            current_type = field["type"]
+            current_type = field["type_name"]
             current_value = values.get(field["name"])
 
-            if is_array(current_type):
+            if field["data_type"] == EthereumDataType.ARRAY:
                 array_preview_page = make_type_page(
                     root_name=current_root_name,
                     field_name=field["name"],
@@ -132,14 +131,14 @@ async def require_confirm_typed_data(
                 )
 
                 array_len = len(current_value)
-                array_preview_page.bold(limit_str(field["type"]))
+                array_preview_page.bold(limit_str(field["type_name"]))
                 array_preview_page.mono(
                     "Contains %d elem%s." % (array_len, "s" if array_len > 1 else "")
                 )
                 array_preview_page.br()
                 array_preview_page.mono("View data?")
 
-                array_view_page.bold(limit_str(field["type"]))
+                array_view_page.bold(limit_str(field["type_name"]))
                 array_view_page.mono(
                     "Contains %d elem%s." % (array_len, "s" if array_len > 1 else "")
                 )
@@ -149,10 +148,10 @@ async def require_confirm_typed_data(
                     ctx, array_preview_page, ButtonRequestType.ConfirmOutput
                 )
                 if go_deeper:
-                    for array_offset in range(0, len(current_value)):
+                    for array_offset in range(len(current_value)):
                         await confirm_struct(
                             root_name=field["name"],
-                            type_name=typeof_array(current_type),
+                            type_name=field["entry_type"]["data_type"],
                             values=current_value[array_offset],
                             array_offsets=array_offsets + [array_offset],
                             hold=False,
@@ -205,8 +204,7 @@ async def require_confirm_typed_data(
 
             else:
                 type_view_page.bold(current_type)
-                value_decoded = abi_decode_single(current_type, current_value)
-                type_view_page.mono(*split_data(value_decoded, 17))
+                type_view_page.mono(*split_data(current_value, 17))
                 type_view_pages.append(type_view_page)
 
         if hold:
@@ -244,6 +242,7 @@ async def require_confirm_typed_data_hash(
     text.mono(*split_data("0x%s" % hexlify(typed_data_hash).decode()))
 
     return await require_hold_to_confirm(ctx, text, ButtonRequestType.ConfirmOutput)
+
 
 if False:
     from typing import Awaitable

@@ -504,8 +504,6 @@ if not utils.BITCOIN_ONLY:
     import apps.eos.writers
     apps.ethereum
     import apps.ethereum
-    apps.ethereum.abi
-    import apps.ethereum.abi
     apps.ethereum.address
     import apps.ethereum.address
     apps.ethereum.get_address

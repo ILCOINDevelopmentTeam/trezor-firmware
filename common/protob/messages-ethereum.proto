@@ -166,13 +166,13 @@ message EthereumTypedDataStructAck {
 
     message EthereumFieldType {
         required EthereumDataType data_type = 1;
-        optional uint32 size = 2;                   // for integer types: size in bytes (uint8 has size 1, uint256 has size 32)
+        required string type_name = 2;              // type string exactly as specified in types
+        optional uint32 size = 3;                   // for integer types: size in bytes (uint8 has size 1, uint256 has size 32)
                                                     // for bytes types: size in bytes, or unset for dynamic
                                                     // for arrays: size in elements, or unset for dynamic
                                                     // for structs: number of members
                                                     // for string, bool and address: unset
-        optional EthereumFieldType entry_type = 3;  // for array types, type of single entry
-        optional string struct_name = 4;            // for struct types, name of struct
+        optional EthereumFieldType entry_type = 4;  // for array types, type of single entry
     }
 
     enum EthereumDataType {
@@ -192,7 +192,7 @@ message EthereumTypedDataValueRequest {
 }
 
 message EthereumTypedDataValueAck {
-    required bytes value = 1;
+    required string value = 1;
     // * atomic types: value of the member.
     //   Length must match the `size` of the corresponding field type.
     // * array types: number of elements, encoded as uint16.

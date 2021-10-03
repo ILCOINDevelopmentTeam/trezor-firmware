@@ -16,9 +16,7 @@
 
 import json
 import re
-from typing import Any, Dict, Tuple, Union, List
-
-from eth_abi.packed import encode_single_packed
+from typing import Union, List
 
 from . import exceptions, messages
 from .tools import expect, normalize_nfc, session
@@ -60,32 +58,23 @@ def find_typed_dependencies(
     return results
 
 
-def encode_type(primary_type: str, types: dict) -> Tuple[str, Dict]:
+def get_types(primary_type: str, types: dict) -> dict:
     """
     Encodes the type of an object by encoding a comma delimited list of its members
 
     primary_type - Root type to encode
     types - Type definitions
     """
-    result = ""
-    result_indexed = {}
+    results = {}
 
     all_deps = find_typed_dependencies(primary_type, types)
-    non_primary_deps = [dep for dep in all_deps if dep != primary_type]
-    deps_primary_first = [primary_type] + sorted(non_primary_deps)
-
-    for type_name in deps_primary_first:
+    for type_name in all_deps:
         children = types.get(type_name)
         if children is None:
             raise ValueError(f"no type definition specified: {type_name}")
-        fields = ",".join([f"{c['type']} {c['name']}" for c in children])
-        result += f"{type_name}({fields})"
-        result_indexed[type_name] = children
+        results[type_name] = children
 
-    return result, result_indexed
-
-
-REQUIRED_TYPED_DATA_PROPERTIES = ("types", "primaryType", "domain", "message")
+    return results
 
 
 def sanitize_typed_data(data: dict) -> dict:
@@ -94,7 +83,8 @@ def sanitize_typed_data(data: dict) -> dict:
 
     data - typed message object
     """
-    sanitized_data = {key: data[key] for key in REQUIRED_TYPED_DATA_PROPERTIES}
+    REQUIRED_KEYS = ("types", "primaryType", "domain", "message")
+    sanitized_data = {key: data[key] for key in REQUIRED_KEYS}
     sanitized_data["types"].setdefault("EIP712Domain", [])
     return sanitized_data
 
@@ -108,15 +98,6 @@ def is_array(type_name: str) -> bool:
 
 def typeof_array(type_name: str) -> str:
     return type_name[: type_name.rindex("[")]
-
-
-def parse_number(arg: Union[int, str]) -> int:
-    if isinstance(arg, str):
-        return int(arg, 16)
-    elif isinstance(arg, int):
-        return arg
-
-    raise ValueError("arg is not a number")
 
 
 def parse_type_n(type_name: str) -> int:
@@ -145,77 +126,50 @@ def parse_array_n(type_name: str) -> Union[int, str]:
     return int(type_name[start_idx:-1])
 
 
-def encode_value(type_name: str, value) -> bytes:
-    for int_type in ["int", "uint"]:
-        if type_name.startswith(int_type):
-            size = parse_type_n(type_name)
-
-            if (size % 8 != 0) or (size not in range(8, 257)):
-                raise ValueError(f"invalid {int_type}<N> width: {size}")
-
-            value = parse_number(value)
-            if value.bit_length() > size:
-                raise ValueError(
-                    f"supplied {int_type} exceeds width: {value.bit_length()} > {size}"
-                )
-            if int_type == "uint":
-                if value < 0:
-                    raise ValueError("supplied uint is negative")
-
-    return encode_single_packed(type_name, value)
-
-
 def get_byte_size_for_int_type(int_type: str) -> int:
     return parse_type_n(int_type) // 8
 
 
-def get_field_type(struct: dict, types: dict) -> messages.EthereumFieldType:
+def get_field_type(field: dict, types: dict) -> messages.EthereumFieldType:
     data_type = None
     size = None
     entry_type = None
-    struct_name = None
 
-    struct_type = struct["type"]
-    # ? should we assign None or not, when it is default - maybe explicit is better ?
-    if is_array(struct_type):
-        # TODO: is not tested
+    type_name = field["type"]
+    if is_array(type_name):
         data_type = messages.EthereumDataType.ARRAY
-        array_size = parse_array_n(struct_type)
+        array_size = parse_array_n(type_name)
         size = None if array_size == "dynamic" else array_size
-        member_typename = typeof_array(struct_type)
+        member_typename = typeof_array(type_name)
         entry_type = get_field_type(member_typename)
-    elif struct_type.startswith("uint"):
+    elif type_name.startswith("uint"):
         data_type = messages.EthereumDataType.UINT
-        size = get_byte_size_for_int_type(struct_type)
-    elif struct_type.startswith("int"):
+        size = get_byte_size_for_int_type(type_name)
+    elif type_name.startswith("int"):
         data_type = messages.EthereumDataType.INT
-        size = get_byte_size_for_int_type(struct_type)
-    elif struct_type.startswith("bytes"):
+        size = get_byte_size_for_int_type(type_name)
+    elif type_name.startswith("bytes"):
         data_type = messages.EthereumDataType.BYTES
-        size = None if struct_type == "bytes" else parse_type_n(struct_type)
-    elif struct_type == "string":
+        size = None if type_name == "bytes" else parse_type_n(type_name)
+    elif type_name == "string":
         data_type = messages.EthereumDataType.STRING
-        size = None
-    # ? maybe startswith("bool") ?
-    elif struct_type == "bool":
+    elif type_name == "bool":
         data_type = messages.EthereumDataType.BOOL
-        size = None
-    elif struct_type == "address":
+    elif type_name == "address":
         data_type = messages.EthereumDataType.ADDRESS
-        size = None
-    elif struct_type in types:
+    elif type_name in types:
         data_type = messages.EthereumDataType.STRUCT
-        size = len(struct)
-        struct_name = struct_type
+        size = len(field)
     else:
-        raise ValueError(f"Unsupported struct type: {struct_type}")
+        raise ValueError(f"Unsupported type name: {type_name}")
 
     return messages.EthereumFieldType(
         data_type=data_type,
         size=size,
         entry_type=entry_type,
-        struct_name=struct_name,
+        type_name=type_name,
     )
+
 
 # ====== Client functions ====== #
 
@@ -330,41 +284,39 @@ def sign_typed_data(client, n: List[int], use_v4: bool, data_string: str):
     data = json.loads(data_string)
     data = sanitize_typed_data(data)
 
-    _, domain_types = encode_type("EIP712Domain", data["types"])
-    _, message_types = encode_type(data["primaryType"], data["types"])
+    domain_types = get_types("EIP712Domain", data["types"])
+    message_types = get_types(data["primaryType"], data["types"])
 
     request = messages.EthereumSignTypedData(
-        address_n=n,
-        primary_type=data["primaryType"],
-        metamask_v4_compat=use_v4
+        address_n=n, primary_type=data["primaryType"], metamask_v4_compat=use_v4
     )
     response = client.call(request)
 
+    # Sending all the types
     while isinstance(response, messages.EthereumTypedDataStructRequest):
         struct_name = response.name
 
         members = []
-        for struct in data["types"][struct_name]:
-            field_type = get_field_type(struct, data["types"])
+        for field in data["types"][struct_name]:
+            field_type = get_field_type(field, data["types"])
             struct_member = messages.EthereumStructMember(
                 type=field_type,
-                name=struct["name"],
+                name=field["name"],
             )
             members.append(struct_member)
 
-        request = messages.EthereumTypedDataStructAck(
-            members=members
-        )
+        request = messages.EthereumTypedDataStructAck(members=members)
         response = client.call(request)
 
+    # Sending the whole message that should be signed
     while isinstance(response, messages.EthereumTypedDataValueRequest):
         root_index = response.member_path[0]
+        # Index 0 is for the domain data, 1 is for the actual message
         if root_index == 0:
             member_typename = "EIP712Domain"
             member_types = domain_types
             member_data = data["domain"]
         elif root_index == 1:
-            # when device expects value, the path [1, x] points to field x inside primaryType.
             member_typename = data["primaryType"]
             member_types = message_types
             member_data = data["message"]
@@ -372,15 +324,14 @@ def sign_typed_data(client, n: List[int], use_v4: bool, data_string: str):
             client.cancel()
             raise ValueError("unknown root")
 
-        # It can be asking for a nested structure
+        # It can be asking for a nested structure (the member path being [X, Y, Z, ...])
         for index in response.member_path[1:]:
             member_def = member_types[member_typename][index]
             member_typename = member_def["type"]
             member_data = member_data[member_def["name"]]
 
-        request = messages.EthereumTypedDataValueAck(
-            value=encode_value(member_typename, member_data)
-        )
+        # We should never be asked for the whole struct nor array, so converting all to string
+        request = messages.EthereumTypedDataValueAck(value=str(member_data))
 
         response = client.call(request)
 
