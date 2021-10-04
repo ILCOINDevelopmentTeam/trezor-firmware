@@ -97,20 +97,28 @@ async def collect_types(ctx, type_name: str, types: dict = None) -> dict:
     req = EthereumTypedDataStructRequest(name=type_name)
     res = await ctx.call(req, EthereumTypedDataStructAck)
 
+    def transfer_member_type_into_dict(member_type) -> dict:
+        # entry type can be nested
+        if member_type.entry_type is not None:
+            entry_type = transfer_member_type_into_dict(member_type.entry_type)
+        else:
+            entry_type = None
+
+        return {
+            "data_type": member_type.data_type,
+            "size": member_type.size,
+            "type_name": member_type.type_name,
+            "entry_type": entry_type,
+        }
+
     new_types = set()
     children = []
     for member in res.members:
         if member.type.data_type == EthereumDataType.STRUCT:
             new_types.add(member.type.type_name)
-        children.append(
-            {
-                "data_type": member.type.data_type,
-                "name": member.name,
-                "size": member.type.size,
-                "type_name": member.type.type_name,
-                "entry_type": member.type.entry_type,
-            }
-        )
+        type_dict = transfer_member_type_into_dict(member.type)
+        type_dict["name"] = member.name
+        children.append(type_dict)
 
     types[type_name] = children
 
@@ -135,7 +143,7 @@ def hash_struct(
 
 def encode_data(
     primary_type: str, data: dict, types: dict, use_v4: bool = True
-) -> bytearray:
+) -> bytes:
     """
     Encodes an object by encoding and concatenating each of its members
 
@@ -161,8 +169,14 @@ def encode_data(
             # SPEC:
             # The array values are encoded as the keccak256 hash of the concatenated
             # encodeData of their contents
-            # TODO: To be implemented. We need to account for possible structs in array
-            pass
+            # TODO: We need to account for possible structs in array
+            buf = b""
+            for value in data[field["name"]]:
+                buf += encode_field(
+                    field=field["entry_type"],
+                    value=value,
+                )
+            encoded_value = keccak256(buf)
         else:
             encoded_value = encode_field(
                 field=field,
@@ -191,23 +205,25 @@ def encode_field(field: dict, value) -> bytes:
         return num.to_bytes(32, "big")
     elif data_type == EthereumDataType.INT:
         num = int(value)
-        return num.to_bytes(32, "big", signed=True)
+        return num.to_bytes(32, "big", True)
     elif data_type == EthereumDataType.BYTES:
+        # NOTE: not tested
+        # TODO: is there a standard of transmitting bytes in json?
         if size is None:
             return keccak256(value)
         else:
             return set_length_right(value, 32)
     elif data_type == EthereumDataType.STRING:
-        return keccak256(value.encode())
+        return keccak256(value)
     elif data_type == EthereumDataType.BOOL:
-        num = 1 if value is True else 0
+        num = 1 if value == "True" else 0
         return num.to_bytes(32, "big")
     elif data_type == EthereumDataType.ADDRESS:
         num = int(value, 16)
         return num.to_bytes(32, "big")
 
     # Structs and arrays should not be encoded directly by this function
-    raise ValueError  # Unsupported data type for encoding
+    raise ValueError  # Unsupported data type for direct field encoding
 
 
 def set_length_right(msg: bytes, length: int) -> bytes:
@@ -246,12 +262,22 @@ async def collect_values(
         field_type = field["data_type"]
         member_value_path = member_path + [fieldIdx]
 
-        # Structs need to be handled recursively
+        # Structs need to be handled recursively, arrays are also special
         if field_type == EthereumDataType.STRUCT:
             struct_name = field["type_name"]
             values[field_name] = await collect_values(
                 ctx, struct_name, types, member_value_path
             )
+        elif field_type == EthereumDataType.ARRAY:
+            # TODO: account for array of structs (and array of arrays)
+            # TODO: check if the array is of expected dimension
+            res = await request_member_value(ctx, member_value_path)
+            array_size = int(res.value)
+            arr = []
+            for i in range(array_size):
+                res = await request_member_value(ctx, member_value_path + [i])
+                arr.append(res.value)
+            values[field_name] = arr
         else:
             res = await request_member_value(ctx, member_value_path)
             # TODO: here we could potentially check if the size corresponds to what is defined in types,

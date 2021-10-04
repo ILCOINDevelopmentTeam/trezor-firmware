@@ -130,18 +130,17 @@ def get_byte_size_for_int_type(int_type: str) -> int:
     return parse_type_n(int_type) // 8
 
 
-def get_field_type(field: dict, types: dict) -> messages.EthereumFieldType:
+def get_field_type(type_name: str, types: dict) -> messages.EthereumFieldType:
     data_type = None
     size = None
     entry_type = None
 
-    type_name = field["type"]
     if is_array(type_name):
         data_type = messages.EthereumDataType.ARRAY
         array_size = parse_array_n(type_name)
         size = None if array_size == "dynamic" else array_size
         member_typename = typeof_array(type_name)
-        entry_type = get_field_type(member_typename)
+        entry_type = get_field_type(member_typename, types)
     elif type_name.startswith("uint"):
         data_type = messages.EthereumDataType.UINT
         size = get_byte_size_for_int_type(type_name)
@@ -159,7 +158,7 @@ def get_field_type(field: dict, types: dict) -> messages.EthereumFieldType:
         data_type = messages.EthereumDataType.ADDRESS
     elif type_name in types:
         data_type = messages.EthereumDataType.STRUCT
-        size = len(field)
+        size = len(types[type_name])
     else:
         raise ValueError(f"Unsupported type name: {type_name}")
 
@@ -298,7 +297,7 @@ def sign_typed_data(client, n: List[int], use_v4: bool, data_string: str):
 
         members = []
         for field in data["types"][struct_name]:
-            field_type = get_field_type(field, data["types"])
+            field_type = get_field_type(field["type"], data["types"])
             struct_member = messages.EthereumStructMember(
                 type=field_type,
                 name=field["name"],
@@ -325,10 +324,19 @@ def sign_typed_data(client, n: List[int], use_v4: bool, data_string: str):
             raise ValueError("unknown root")
 
         # It can be asking for a nested structure (the member path being [X, Y, Z, ...])
+        # TODO: account for array of structs
         for index in response.member_path[1:]:
-            member_def = member_types[member_typename][index]
-            member_typename = member_def["type"]
-            member_data = member_data[member_def["name"]]
+            if isinstance(member_data, dict):
+                member_def = member_types[member_typename][index]
+                member_typename = member_def["type"]
+                member_data = member_data[member_def["name"]]
+            elif isinstance(member_data, list):
+                member_data = member_data[index]
+
+        # We were asked for a list, first sending its length and we will be receiving
+        # requests for individual elements later
+        if isinstance(member_data, list):
+            member_data = len(member_data)
 
         # We should never be asked for the whole struct nor array, so converting all to string
         request = messages.EthereumTypedDataValueAck(value=str(member_data))
