@@ -201,11 +201,9 @@ def encode_field(field: dict, value) -> bytes:
     data_type = field["data_type"]
     size = field["size"]
     if data_type == EthereumDataType.UINT:
-        num = int(value)
-        return num.to_bytes(32, "big")
+        return convert_number_to_32_bytes(value)
     elif data_type == EthereumDataType.INT:
-        num = int(value)
-        return num.to_bytes(32, "big", True)
+        return convert_number_to_32_bytes(value, is_signed=True)
     elif data_type == EthereumDataType.BYTES:
         # NOTE: not tested
         # TODO: is there a standard of transmitting bytes in json?
@@ -216,14 +214,20 @@ def encode_field(field: dict, value) -> bytes:
     elif data_type == EthereumDataType.STRING:
         return keccak256(value)
     elif data_type == EthereumDataType.BOOL:
-        num = 1 if value == "True" else 0
-        return num.to_bytes(32, "big")
+        if value not in [b"\x00", b"\x01"]:
+            raise ValueError  # Unsupported value for boolean
+        return convert_number_to_32_bytes(value)
     elif data_type == EthereumDataType.ADDRESS:
-        num = int(value, 16)
-        return num.to_bytes(32, "big")
+        return convert_number_to_32_bytes(value)
 
     # Structs and arrays should not be encoded directly by this function
     raise ValueError  # Unsupported data type for direct field encoding
+
+
+def convert_number_to_32_bytes(value: bytes, is_signed: bool = False) -> bytes:
+    # TODO: there could be some easier/direct conversion than through int
+    num = int.from_bytes(value, "big", is_signed)
+    return num.to_bytes(32, "big", is_signed)
 
 
 def set_length_right(msg: bytes, length: int) -> bytes:
@@ -260,6 +264,7 @@ async def collect_values(
         field = struct[fieldIdx]
         field_name = field["name"]
         field_type = field["data_type"]
+        field_size = field["size"]
         member_value_path = member_path + [fieldIdx]
 
         # Structs need to be handled recursively, arrays are also special
@@ -270,9 +275,8 @@ async def collect_values(
             )
         elif field_type == EthereumDataType.ARRAY:
             # TODO: account for array of structs (and array of arrays)
-            # TODO: check if the array is of expected dimension
             res = await request_member_value(ctx, member_value_path)
-            array_size = int(res.value)
+            array_size = int.from_bytes(res.value, "big")
             arr = []
             for i in range(array_size):
                 res = await request_member_value(ctx, member_value_path + [i])
@@ -280,8 +284,12 @@ async def collect_values(
             values[field_name] = arr
         else:
             res = await request_member_value(ctx, member_value_path)
-            # TODO: here we could potentially check if the size corresponds to what is defined in types,
-            # and also if the size does not exceed 1024 bytes
+            # Checking if the size corresponds to what is defined in types,
+            # and also setting our maximum size as 1024 bytes
+            if field_size is not None:
+                assert field_size == len(res.value)
+            else:
+                assert len(res.value) <= 1024
             values[field_name] = res.value
 
     return values

@@ -4625,13 +4625,13 @@ class EthereumTypedDataValueRequest(protobuf.MessageType):
 class EthereumTypedDataValueAck(protobuf.MessageType):
     MESSAGE_WIRE_TYPE = 468
     FIELDS = {
-        1: protobuf.Field("value", "string", repeated=False, required=True),
+        1: protobuf.Field("value", "bytes", repeated=False, required=True),
     }
 
     def __init__(
         self,
         *,
-        value: "str",
+        value: "bytes",
     ) -> None:
         self.value = value
 

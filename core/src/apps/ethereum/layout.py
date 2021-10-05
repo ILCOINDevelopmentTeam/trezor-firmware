@@ -20,11 +20,25 @@ from . import networks, tokens
 from .address import address_from_bytes
 
 
+def decode_data(data, type_name: str) -> str:
+    if type_name == "bytes":
+        return data.decode()
+    elif type_name == "string":
+        return data.decode()
+    elif type_name == "address":
+        return "0x" + hexlify(data).decode()
+    elif type_name == "bool":
+        return "True" if data == b"\x01" else "False"
+    elif type_name.startswith("int") or type_name.startswith("uint"):
+        is_signed = type_name.startswith("int")
+        return str(int.from_bytes(data, "big", is_signed))
+
+
 async def confirm_typed_domain_brief(ctx, domain_values: dict):
     page = Text("Typed Data", ui.ICON_SEND, icon_color=ui.GREEN)
 
-    domain_name = domain_values.get("name")
-    domain_version = domain_values.get("version")
+    domain_name = decode_data(domain_values.get("name"), "string")
+    domain_version = decode_data(domain_values.get("version"), "string")
 
     page.bold("Name: %s" % domain_name)
     page.normal("Version: %s" % domain_version)
@@ -49,7 +63,7 @@ async def require_confirm_typed_domain(ctx, domain_types: dict, domain_values: d
                 title="EIP712Domain %d/%d" % (len(pages) + 1, len(domain_types)),
                 field_name=limit_str(type_def["name"]),
                 type_name=limit_str(type_def["type_name"]),
-                field_value=value,
+                field_value=decode_data(value, type_def["type_name"]),
             )
         )
 
@@ -151,12 +165,11 @@ async def require_confirm_typed_data(
                     for array_offset in range(len(current_value)):
                         await confirm_struct(
                             root_name=field["name"],
-                            type_name=field["entry_type"]["data_type"],
+                            type_name=field["entry_type"]["type_name"],
                             values=current_value[array_offset],
                             array_offsets=array_offsets + [array_offset],
                             hold=False,
                         )
-                        continue
 
                 continue
 
@@ -204,7 +217,8 @@ async def require_confirm_typed_data(
 
             else:
                 type_view_page.bold(current_type)
-                type_view_page.mono(*split_data(current_value, 17))
+                value_decoded = decode_data(current_value, current_type)
+                type_view_page.mono(*split_data(value_decoded, 17))
                 type_view_pages.append(type_view_page)
 
         if hold:

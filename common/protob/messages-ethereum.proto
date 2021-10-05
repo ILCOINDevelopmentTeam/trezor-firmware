@@ -192,7 +192,7 @@ message EthereumTypedDataValueRequest {
 }
 
 message EthereumTypedDataValueAck {
-    required string value = 1;
+    required bytes value = 1;
     // * atomic types: value of the member.
     //   Length must match the `size` of the corresponding field type.
     // * array types: number of elements, encoded as uint16.

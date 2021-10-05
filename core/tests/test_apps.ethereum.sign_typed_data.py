@@ -93,15 +93,21 @@ ALL_TYPES_BASIC = {
 }
 
 DOMAIN_VALUES = {
-    "verifyingContract": "0x1e0Ae8205e9726E6F296ab8869160A6423E2337E",
-    "chainId": "1",
-    "name": "Ether Mail",
-    "version": "1",
+    "verifyingContract": b"\x1e\n\xe8 ^\x97&\xe6\xf2\x96\xab\x88i\x16\nd#\xe23~",
+    "chainId": b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01",
+    "name": b"Ether Mail",
+    "version": b"1",
 }
 MESSAGE_VALUES_BASIC = {
-    "contents": "Hello, Bob!",
-    "to": {"name": "Bob", "wallet": "0x54B0Fa66A065748C40dCA2C7Fe125A2028CF9982"},
-    "from": {"name": "Cow", "wallet": "0xc0004B62C5A39a728e4Af5bee0c6B4a4E54b15ad"},
+    "contents": b"Hello, Bob!",
+    "to": {
+        "name": b"Bob",
+        "wallet": b"T\xb0\xfaf\xa0et\x8c@\xdc\xa2\xc7\xfe\x12Z (\xcf\x99\x82",
+    },
+    "from": {
+        "name": b"Cow",
+        "wallet": b"\xc0\x00Kb\xc5\xa3\x9ar\x8eJ\xf5\xbe\xe0\xc6\xb4\xa4\xe5K\x15\xad",
+    },
 }
 
 MESSAGE_TYPES_LIST = {
@@ -190,22 +196,22 @@ ALL_TYPES_LIST = {
 }
 
 MESSAGE_VALUES_LIST = {
-    "messages": ["Hello, Bob!", "How are you?", "Hope you're fine"],
+    "messages": [b"Hello, Bob!", b"How are you?", b"Hope you're fine"],
     "to": {
-        "name": "Bob",
-        "karma": "-4",
-        "kids": "0",
-        "pets": ["dog", "cat"],
-        "wallet": "0x54B0Fa66A065748C40dCA2C7Fe125A2028CF9982",
-        "married": "False",
+        "name": b"Bob",
+        "karma": b"\xff\xfc",
+        "kids": b"\x00",
+        "pets": [b"dog", b"cat"],
+        "wallet": b"T\xb0\xfaf\xa0et\x8c@\xdc\xa2\xc7\xfe\x12Z (\xcf\x99\x82",
+        "married": b"\x00",
     },
     "from": {
-        "name": "Amy",
-        "karma": "4",
-        "kids": "2",
-        "pets": ["parrot"],
-        "wallet": "0xc0004B62C5A39a728e4Af5bee0c6B4a4E54b15ad",
-        "married": "True",
+        "name": b"Amy",
+        "karma": b"\x00\x04",
+        "kids": b"\x02",
+        "pets": [b"parrot"],
+        "wallet": b"\xc0\x00Kb\xc5\xa3\x9ar\x8eJ\xf5\xbe\xe0\xc6\xb4\xa4\xe5K\x15\xad",
+        "married": b"\x01",
     },
 }
 
@@ -256,27 +262,23 @@ class TestEthereumSignTypedData(unittest.TestCase):
             (
                 "EIP712Domain",
                 b"EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)",
-                ALL_TYPES_BASIC
+                ALL_TYPES_BASIC,
             ),
-            (
-                "Person",
-                b"Person(string name,address wallet)",
-                ALL_TYPES_BASIC
-            ),
+            ("Person", b"Person(string name,address wallet)", ALL_TYPES_BASIC),
             (
                 "Mail",
                 b"Mail(Person from,Person to,string contents)Person(string name,address wallet)",
-                ALL_TYPES_BASIC
+                ALL_TYPES_BASIC,
             ),
             (
                 "Person",
                 b"Person(string name,address wallet,bool married,uint8 kids,int16 karma,string[] pets)",
-                ALL_TYPES_LIST
+                ALL_TYPES_LIST,
             ),
             (
                 "Mail",
                 b"Mail(Person from,Person to,string[] messages)Person(string name,address wallet,bool married,uint8 kids,int16 karma,string[] pets)",
-                ALL_TYPES_LIST
+                ALL_TYPES_LIST,
             ),
         )
 
@@ -339,32 +341,42 @@ class TestEthereumSignTypedData(unittest.TestCase):
         VECTORS = (
             (
                 {"data_type": EthereumDataType.STRING, "size": None},
-                "Ether Mail",
-                keccak256("Ether Mail"),
+                b"Ether Mail",
+                keccak256(b"Ether Mail"),
             ),
             (
                 {"data_type": EthereumDataType.STRING, "size": None},
-                "1",
-                keccak256("1"),
+                b"1",
+                keccak256(b"1"),
             ),
             (
                 {"data_type": EthereumDataType.UINT, "size": 32},
-                "1",
+                b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01",
                 b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01",
             ),
             (
+                {"data_type": EthereumDataType.UINT, "size": 4},
+                b"\x00\x00\x00\xde",
+                b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xde",
+            ),
+            (
+                {"data_type": EthereumDataType.INT, "size": 1},
+                b"\x05",
+                b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x05",
+            ),
+            (
                 {"data_type": EthereumDataType.ADDRESS, "size": None},
-                "0x1e0Ae8205e9726E6F296ab8869160A6423E2337E",
+                b"\x1e\n\xe8 ^\x97&\xe6\xf2\x96\xab\x88i\x16\nd#\xe23~",
                 b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x1e\n\xe8 ^\x97&\xe6\xf2\x96\xab\x88i\x16\nd#\xe23~",
             ),
             (
                 {"data_type": EthereumDataType.BOOL, "size": None},
-                "True",
+                b"\x01",
                 b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01",
             ),
             (
                 {"data_type": EthereumDataType.BOOL, "size": None},
-                "False",
+                b"\x00",
                 b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
             ),
         )

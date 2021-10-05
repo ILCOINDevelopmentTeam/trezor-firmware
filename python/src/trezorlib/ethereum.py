@@ -16,7 +16,7 @@
 
 import json
 import re
-from typing import Union, List
+from typing import Any, Union, List
 
 from . import exceptions, messages
 from .tools import expect, normalize_nfc, session
@@ -168,6 +168,26 @@ def get_field_type(type_name: str, types: dict) -> messages.EthereumFieldType:
         entry_type=entry_type,
         type_name=type_name,
     )
+
+
+def encode_data(value: Any, type_name: str) -> bytes:
+    if type_name.startswith("bytes"):
+        # TODO: find out what is the standard of sending bytes
+        return value.encode()
+    elif type_name == "string":
+        return value.encode()
+    elif type_name.startswith(("int", "uint")):
+        byte_length = get_byte_size_for_int_type(type_name)
+        # TODO: maybe if we receive a string, parse it as hex, otherwise as decimal, as in original PR
+        return int(value).to_bytes(byte_length, "big", signed=type_name.startswith("int"))
+    elif type_name == "bool":
+        num = 1 if value is True else 0
+        return num.to_bytes(1, "big")
+    elif type_name == "address":
+        return int(value, 16).to_bytes(20, "big")
+
+    # We should be receiving only atomic, non-array types
+    raise ValueError("Unsupported data type for direct field encoding")
 
 
 # ====== Client functions ====== #
@@ -331,15 +351,17 @@ def sign_typed_data(client, n: List[int], use_v4: bool, data_string: str):
                 member_typename = member_def["type"]
                 member_data = member_data[member_def["name"]]
             elif isinstance(member_data, list):
+                member_typename = typeof_array(member_typename)
                 member_data = member_data[index]
 
-        # We were asked for a list, first sending its length and we will be receiving
+        # If we were asked for a list, first sending its length and we will be receiving
         # requests for individual elements later
         if isinstance(member_data, list):
-            member_data = len(member_data)
+            encoded_data = len(member_data).to_bytes(16, "big")
+        else:
+            encoded_data = encode_data(member_data, member_typename)
 
-        # We should never be asked for the whole struct nor array, so converting all to string
-        request = messages.EthereumTypedDataValueAck(value=str(member_data))
+        request = messages.EthereumTypedDataValueAck(value=encoded_data)
 
         response = client.call(request)
 
