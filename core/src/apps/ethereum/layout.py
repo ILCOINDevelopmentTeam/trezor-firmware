@@ -1,5 +1,9 @@
 from ubinascii import hexlify
 
+if False:
+    from typing import Awaitable
+    from trezor.wire import Context
+
 from trezor import ui
 from trezor.enums import ButtonRequestType, EthereumDataType
 from trezor.strings import format_amount
@@ -31,36 +35,45 @@ def decode_data(data, type_name: str) -> str:
         return "True" if data == b"\x01" else "False"
     elif type_name.startswith("int") or type_name.startswith("uint"):
         is_signed = type_name.startswith("int")
+        # TODO: this does not show negative ints for some reason, in normal python it works fine
         return str(int.from_bytes(data, "big", is_signed))
 
+    raise ValueError  # Unsupported data type for direct field decoding
 
-async def confirm_typed_domain_brief(ctx, domain_values: dict):
+
+async def confirm_typed_domain_brief(
+    ctx: Context, domain_values: dict
+) -> bool:
     page = Text("Typed Data", ui.ICON_SEND, icon_color=ui.GREEN)
 
     domain_name = decode_data(domain_values.get("name"), "string")
     domain_version = decode_data(domain_values.get("version"), "string")
 
-    page.bold("Name: %s" % domain_name)
-    page.normal("Version: %s" % domain_version)
+    page.bold("Name: {}".format(domain_name))
+    page.normal("Version: {}".format(domain_version))
     page.br()
     page.mono("View EIP712Domain?")
 
     return await confirm(ctx, page, ButtonRequestType.Other)
 
 
-async def require_confirm_typed_domain(ctx, domain_types: dict, domain_values: dict):
-    def make_field_page(title, field_name, type_name, field_value):
+async def require_confirm_typed_domain(
+    ctx: Context, domain_types: dict, domain_values: dict
+) -> Awaitable[None]:
+    def make_field_page(
+        title: str, field_name: str, type_name: str, field_value: str
+    ) -> Text:
         page = Text(title, ui.ICON_CONFIG, icon_color=ui.ORANGE_ICON)
-        page.bold("%s (%s)" % (field_name, type_name))
-        page.mono(*split_data("{}".format(field_value), 17))
+        page.bold("{} ({})".format(field_name, type_name))
+        page.mono(*split_data(field_value, 17))
         return page
 
     pages = []
     for type_def in domain_types:
-        value = domain_values.get(type_def["name"])
+        value = domain_values[type_def["name"]]
         pages.append(
             make_field_page(
-                title="EIP712Domain %d/%d" % (len(pages) + 1, len(domain_types)),
+                title="EIP712Domain {}/{}".format(len(pages) + 1, len(domain_types)),
                 field_name=limit_str(type_def["name"]),
                 type_name=limit_str(type_def["type_name"]),
                 field_value=decode_data(value, type_def["type_name"]),
@@ -72,22 +85,21 @@ async def require_confirm_typed_domain(ctx, domain_types: dict, domain_values: d
     )
 
 
-TYPED_DATA_BRIEF_FIELDS = 3
-
-
-async def confirm_typed_data_brief(ctx, primary_type: str, fields: list):
+async def confirm_typed_data_brief(
+    ctx: Context, primary_type: str, fields: list
+) -> bool:
     page = Text(primary_type, ui.ICON_SEND, icon_color=ui.GREEN)
 
-    limit = TYPED_DATA_BRIEF_FIELDS
-    for field in fields:
-        page.bold("%s" % limit_str(field["name"]))
-        limit -= 1
-        if limit == 0:
-            break
-
-    printed_num = TYPED_DATA_BRIEF_FIELDS - limit
-    if printed_num < len(fields):
-        page.mono("...and %d more." % (len(fields) - printed_num))
+    # We have limited screen space, so showing only a preview when having lot of fields
+    MAX_FIELDS_TO_SHOW = 3
+    fields_amount = len(fields)
+    if fields_amount > MAX_FIELDS_TO_SHOW:
+        for field in fields[:MAX_FIELDS_TO_SHOW]:
+            page.bold(limit_str(field["name"]))
+        page.mono("...and {} more.".format(fields_amount - MAX_FIELDS_TO_SHOW))
+    else:
+        for field in fields:
+            page.bold(limit_str(field["name"]))
 
     page.mono("View full message?")
 
@@ -95,141 +107,149 @@ async def confirm_typed_data_brief(ctx, primary_type: str, fields: list):
 
 
 async def require_confirm_typed_data(
-    ctx, primary_type: str, data_types: dict, data_values: dict
-):
-    def make_type_page(
-        root_name, field_name, current_array_offsets, current_field, total_fields
-    ):
-        array_offsets = ""
-        for offset in current_array_offsets:
-            array_offsets += "%d." % offset
+    ctx: Context, primary_type: str, data_types: dict, data_values: dict
+) -> None:
+    # TODO: consider this function not taking any arguments and taking
+    # the values from the parent function local variables
+    # (As we call it many times with the same arguments)
+    # (It would need to be moved into confirm_data probably)
+    def create_title_with_type_info(
+        root_name: str,
+        field_name: str,
+        field_idx: int,
+        fields_amount: int,
+    ) -> Text:
+        """Generates a title for a page showing the type tree of current value
 
-        if len(array_offsets) > 0:
-            title = limit_str("%s.%s%s" % (root_name, array_offsets, field_name), 13)
-        else:
-            title = limit_str("%s.%s" % (root_name, field_name), 13)
-
-        if len(array_offsets) == 0:
-            title += " %d/%d" % (current_field + 1, total_fields)
+        For example "Mail.from 1/3", meaning "from" property of "Mail"
+        struct, which is the first of its three properties
+        """
+        title = limit_str("{}.{}".format(root_name, field_name), 13)
+        title += " {}/{}".format(field_idx + 1, fields_amount)
 
         return Text(title, ui.ICON_CONFIG, icon_color=ui.ORANGE_ICON)
 
-    async def confirm_struct(
-        root_name, type_name: str, values: dict, array_offsets: list, hold: bool = False
-    ):
-        current_type = type_name
-        current_root_name = root_name
-        type_def = data_types[current_type]
+    async def confirm_data(
+        root_name: str,
+        type_defs: list,
+        data_values,
+        require_hold: bool = False,
+    ) -> Awaitable[None]:
+        fields_amount = len(type_defs)
 
         type_view_pages = []
 
-        for (field_idx, field) in enumerate(type_def):
-            current_type = field["type_name"]
-            current_value = values.get(field["name"])
+        for field_idx, field in enumerate(type_defs):
+            type_name = field["type_name"]
+            data_type = field["data_type"]
+            field_name = field["name"]
 
-            if field["data_type"] == EthereumDataType.ARRAY:
-                array_preview_page = make_type_page(
-                    root_name=current_root_name,
-                    field_name=field["name"],
-                    current_array_offsets=array_offsets,
-                    current_field=field_idx,
-                    total_fields=len(type_def),
-                )
+            # TODO: it could be made general for both dicts and lists
+            if isinstance(data_values, dict):
+                current_value = data_values[field_name]
+            elif isinstance(data_values, list):
+                current_value = data_values[field_idx]
+            else:
+                raise ValueError  # Values can be only dict or list
 
-                array_view_page = make_type_page(
-                    root_name=current_root_name,
-                    field_name=field["name"],
-                    current_array_offsets=array_offsets,
-                    current_field=field_idx,
-                    total_fields=len(type_def),
-                )
-
+            # There can be either array, struct or atomic data type
+            if data_type == EthereumDataType.ARRAY:
                 array_len = len(current_value)
-                array_preview_page.bold(limit_str(field["type_name"]))
-                array_preview_page.mono(
-                    "Contains %d elem%s." % (array_len, "s" if array_len > 1 else "")
+                array_details = "Contains {} elem{}".format(
+                    array_len, "s" if array_len > 1 else ""
                 )
+
+                # Creating and showing a preview page and potentially going deeper into this array
+                array_preview_page = create_title_with_type_info(
+                    root_name=root_name,
+                    field_name=field_name,
+                    field_idx=field_idx,
+                    fields_amount=fields_amount,
+                )
+                array_preview_page.bold(limit_str(type_name))
+                array_preview_page.mono(array_details)
                 array_preview_page.br()
-                array_preview_page.mono("View data?")
-
-                array_view_page.bold(limit_str(field["type_name"]))
-                array_view_page.mono(
-                    "Contains %d elem%s." % (array_len, "s" if array_len > 1 else "")
-                )
-                type_view_pages.append(array_view_page)
-
+                array_preview_page.mono("View array data?")
                 go_deeper = await confirm(
                     ctx, array_preview_page, ButtonRequestType.ConfirmOutput
                 )
                 if go_deeper:
-                    for array_offset in range(len(current_value)):
-                        await confirm_struct(
-                            root_name=field["name"],
-                            type_name=field["entry_type"]["type_name"],
-                            values=current_value[array_offset],
-                            array_offsets=array_offsets + [array_offset],
-                            hold=False,
-                        )
+                    # We need to create a list of type definitions, where the are all the same
+                    type_defs = [field["entry_type"]] * array_len
+                    for i in range(array_len):
+                        type_defs[i]["name"] = field_name + "[]"
 
-                continue
+                    await confirm_data(
+                        root_name=root_name,
+                        type_defs=type_defs,
+                        data_values=current_value,
+                        require_hold=False,
+                    )
 
-            type_view_page = make_type_page(
-                root_name=current_root_name,
-                field_name=field["name"],
-                current_array_offsets=array_offsets,
-                current_field=field_idx,
-                total_fields=len(type_def),
-            )
-            if current_type in data_types:
-                type_preview_page = make_type_page(
-                    root_name=current_root_name,
-                    field_name=field["name"],
-                    current_array_offsets=array_offsets,
-                    current_field=field_idx,
-                    total_fields=len(type_def),
+                # Adding a single view page displaying summary of this array
+                array_view_page = create_title_with_type_info(
+                    root_name=root_name,
+                    field_name=field_name,
+                    field_idx=field_idx,
+                    fields_amount=fields_amount,
+                )
+                array_view_page.bold(limit_str(type_name))
+                array_view_page.mono(array_details)
+                type_view_pages.append(array_view_page)
+            elif data_type == EthereumDataType.STRUCT:
+                fields_num = len(current_value)
+                struct_details = "Contains {} field{}".format(
+                    fields_num, "s" if fields_num > 1 else ""
                 )
 
-                fields_num = len(data_types[current_type])
-                type_preview_page.bold(limit_str(current_type))
-                type_preview_page.mono(
-                    "Contains %d field%s." % (fields_num, "s" if fields_num > 1 else "")
+                # Creating and showing a preview page and potentially going deeper into this struct
+                type_preview_page = create_title_with_type_info(
+                    root_name=root_name,
+                    field_name=field_name,
+                    field_idx=field_idx,
+                    fields_amount=fields_amount,
                 )
+                type_preview_page.bold(limit_str(type_name))
+                type_preview_page.mono(struct_details)
                 type_preview_page.br()
-                type_preview_page.mono("View data?")
-
-                type_view_page.bold(limit_str(current_type))
-                type_view_page.mono(
-                    "Contains %d field%s." % (fields_num, "s" if fields_num > 1 else "")
-                )
-                type_view_pages.append(type_view_page)
-
+                type_preview_page.mono("View struct data?")
                 go_deeper = await confirm(
                     ctx, type_preview_page, ButtonRequestType.ConfirmOutput
                 )
                 if go_deeper:
-                    await confirm_struct(
-                        root_name=field["name"],
-                        type_name=current_type,
-                        values=current_value,
-                        array_offsets=[],
-                        hold=False,
+                    await confirm_data(
+                        root_name=field_name,
+                        type_defs=data_types[type_name],
+                        data_values=current_value,
+                        require_hold=False,
                     )
 
+                # Adding a single view page displaying summary of this struct
+                type_view_page = create_title_with_type_info(
+                    root_name=root_name,
+                    field_name=field_name,
+                    field_idx=field_idx,
+                    fields_amount=fields_amount,
+                )
+                type_view_page.bold(limit_str(type_name))
+                type_view_page.mono(struct_details)
+                type_view_pages.append(type_view_page)
             else:
-                type_view_page.bold(current_type)
-                value_decoded = decode_data(current_value, current_type)
+                # Adding a single view page displaying an atomic value
+                type_view_page = create_title_with_type_info(
+                    root_name=root_name,
+                    field_name=field_name,
+                    field_idx=field_idx,
+                    fields_amount=fields_amount,
+                )
+                type_view_page.bold(type_name)
+                value_decoded = decode_data(current_value, type_name)
                 type_view_page.mono(*split_data(value_decoded, 17))
                 type_view_pages.append(type_view_page)
 
-        if hold:
-            return await require_hold_to_confirm(
-                ctx,
-                Paginated(type_view_pages)
-                if len(type_view_pages) > 1
-                else type_view_pages[0],
-                ButtonRequestType.ConfirmOutput,
-            )
-        return await require_confirm(
+        # Choosing whether a hold is necessary (by default only in the first call)
+        func_to_call = require_hold_to_confirm if require_hold else require_confirm
+        return await func_to_call(
             ctx,
             Paginated(type_view_pages)
             if len(type_view_pages) > 1
@@ -237,31 +257,24 @@ async def require_confirm_typed_data(
             ButtonRequestType.ConfirmOutput,
         )
 
-    await confirm_struct(
+    await confirm_data(
         root_name=primary_type,
-        type_name=primary_type,
-        values=data_values,
-        array_offsets=[],
-        hold=True,
+        type_defs=data_types[primary_type],
+        data_values=data_values,
+        require_hold=True,
     )
 
 
 async def require_confirm_typed_data_hash(
-    ctx, primary_type: str, typed_data_hash: bytes
+    ctx: Context, primary_type: str, typed_data_hash: bytes
 ):
     text = Text(
         "Sign typed data?", ui.ICON_CONFIG, icon_color=ui.GREEN, new_lines=False
     )
     text.bold(limit_str(primary_type))
-    text.mono(*split_data("0x%s" % hexlify(typed_data_hash).decode()))
+    text.mono(*split_data("0x" + hexlify(typed_data_hash).decode()))
 
     return await require_hold_to_confirm(ctx, text, ButtonRequestType.ConfirmOutput)
-
-
-if False:
-    from typing import Awaitable
-
-    from trezor.wire import Context
 
 
 def require_confirm_tx(

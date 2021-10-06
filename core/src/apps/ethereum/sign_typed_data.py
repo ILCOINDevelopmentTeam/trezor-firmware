@@ -74,6 +74,7 @@ async def generate_typed_data_hash(
             ctx, primary_type, message_types, message_values
         )
 
+    # TODO: the use_v4 variable is not used at all now, either implement it or delete it
     domain_separator = hash_struct("EIP712Domain", domain_values, domain_types, use_v4)
     message_hash = hash_struct(primary_type, message_values, message_types, use_v4)
 
@@ -260,12 +261,11 @@ async def collect_values(
     values = {}
     struct = types[primary_type]
 
-    for fieldIdx in range(len(struct)):
-        field = struct[fieldIdx]
+    for field_index, field in enumerate(struct):
         field_name = field["name"]
         field_type = field["data_type"]
         field_size = field["size"]
-        member_value_path = member_path + [fieldIdx]
+        member_value_path = member_path + [field_index]
 
         # Structs need to be handled recursively, arrays are also special
         if field_type == EthereumDataType.STRUCT:
@@ -342,8 +342,9 @@ def find_typed_dependencies(
     if results is None:
         results = []
 
+    # When being an array, getting the part before the square brackets
     if primary_type[-1] == "]":
-        primary_type = primary_type[: primary_type.rindex("[")]
+        primary_type = primary_type[: primary_type.index("[")]
 
     # We already have this type or it is not even a defined type
     if (primary_type in results) or (primary_type not in types):

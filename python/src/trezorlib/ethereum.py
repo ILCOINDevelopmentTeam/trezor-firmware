@@ -39,13 +39,12 @@ def find_typed_dependencies(
     if results is None:
         results = []
 
-    m = re.compile(r"^\w+").match(primary_type)
-    if m:
-        primary_type = m.group(0)
-    else:
-        raise ValueError(f"cannot parse primary type: {primary_type}")
+    # When being an array, getting the part before the square brackets
+    if primary_type[-1] == "]":
+        primary_type = primary_type[: primary_type.index("[")]
 
-    if (primary_type in results) or (types.get(primary_type) is None):
+    # We already have this type or it is not even a defined type
+    if (primary_type in results) or (primary_type not in types):
         return results
 
     results.append(primary_type)
@@ -58,23 +57,15 @@ def find_typed_dependencies(
     return results
 
 
-def get_types(primary_type: str, types: dict) -> dict:
+def get_relevant_types(primary_type: str, types: dict) -> dict:
     """
-    Encodes the type of an object by encoding a comma delimited list of its members
+    Gets a dict with all relevant type definitions for a certain type
 
-    primary_type - Root type to encode
-    types - Type definitions
+    primary_type - Root type
+    types - All type definitions
     """
-    results = {}
-
     all_deps = find_typed_dependencies(primary_type, types)
-    for type_name in all_deps:
-        children = types.get(type_name)
-        if children is None:
-            raise ValueError(f"no type definition specified: {type_name}")
-        results[type_name] = children
-
-    return results
+    return {type_name: types[type_name] for type_name in all_deps}
 
 
 def sanitize_typed_data(data: dict) -> dict:
@@ -90,10 +81,7 @@ def sanitize_typed_data(data: dict) -> dict:
 
 
 def is_array(type_name: str) -> bool:
-    if type_name:
-        return type_name[-1] == "]"
-
-    return False
+    return type_name[-1] == "]"
 
 
 def typeof_array(type_name: str) -> str:
@@ -105,16 +93,7 @@ def parse_type_n(type_name: str) -> int:
 
     Example: "uint256" -> 256
     """
-    # TODO: we could use regex for this to take number from the end
-    accum = []
-    for c in type_name:
-        if c.isdigit():
-            accum.append(c)
-        else:
-            accum = []
-
-    # join collected digits into a number
-    return int("".join(accum))
+    return int(re.search(r"\d+$", type_name).group(0))
 
 
 def parse_array_n(type_name: str) -> Union[int, str]:
@@ -134,6 +113,9 @@ def get_field_type(type_name: str, types: dict) -> messages.EthereumFieldType:
     data_type = None
     size = None
     entry_type = None
+
+    # TODO: cannot we also set size for bool and address (1 and 20),
+    # so that device can verify we are not sending corrupted data?
 
     if is_array(type_name):
         data_type = messages.EthereumDataType.ARRAY
@@ -303,8 +285,8 @@ def sign_typed_data(client, n: List[int], use_v4: bool, data_string: str):
     data = json.loads(data_string)
     data = sanitize_typed_data(data)
 
-    domain_types = get_types("EIP712Domain", data["types"])
-    message_types = get_types(data["primaryType"], data["types"])
+    domain_types = get_relevant_types("EIP712Domain", data["types"])
+    message_types = get_relevant_types(data["primaryType"], data["types"])
 
     request = messages.EthereumSignTypedData(
         address_n=n, primary_type=data["primaryType"], metamask_v4_compat=use_v4
@@ -362,7 +344,6 @@ def sign_typed_data(client, n: List[int], use_v4: bool, data_string: str):
             encoded_data = encode_data(member_data, member_typename)
 
         request = messages.EthereumTypedDataValueAck(value=encoded_data)
-
         response = client.call(request)
 
     return response
