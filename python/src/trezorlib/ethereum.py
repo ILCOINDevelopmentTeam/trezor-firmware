@@ -26,6 +26,13 @@ def int_to_big_endian(value) -> bytes:
     return value.to_bytes((value.bit_length() + 7) // 8, "big")
 
 
+def decode_hex(value: str) -> bytes:
+    if value.startswith(("0x", "0X")):
+        return bytes.fromhex(value[2:])
+    else:
+        return bytes.fromhex(value)
+
+
 def find_typed_dependencies(
     primary_type: str, types: dict, results: list = None
 ) -> list:
@@ -114,9 +121,6 @@ def get_field_type(type_name: str, types: dict) -> messages.EthereumFieldType:
     size = None
     entry_type = None
 
-    # TODO: cannot we also set size for bool and address (1 and 20),
-    # so that device can verify we are not sending corrupted data?
-
     if is_array(type_name):
         data_type = messages.EthereumDataType.ARRAY
         array_size = parse_array_n(type_name)
@@ -160,13 +164,14 @@ def encode_data(value: Any, type_name: str) -> bytes:
         return value.encode()
     elif type_name.startswith(("int", "uint")):
         byte_length = get_byte_size_for_int_type(type_name)
-        # TODO: maybe if we receive a string, parse it as hex, otherwise as decimal, as in original PR
         return int(value).to_bytes(byte_length, "big", signed=type_name.startswith("int"))
     elif type_name == "bool":
+        if value not in [True, False]:
+            raise ValueError(f"Invalid bool value - {value}")
         num = 1 if value is True else 0
         return num.to_bytes(1, "big")
     elif type_name == "address":
-        return int(value, 16).to_bytes(20, "big")
+        return decode_hex(value)
 
     # We should be receiving only atomic, non-array types
     raise ValueError("Unsupported data type for direct field encoding")

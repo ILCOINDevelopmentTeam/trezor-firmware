@@ -14,6 +14,9 @@ from trezor.ui.layouts import (
     confirm_output,
 )
 from trezor.ui.layouts.tt.altcoin import confirm_total_ethereum
+
+# DO NOT use anything from trezor.ui.components (use trezor.ui.layouts)
+# Try to do it with layouts (confirm_properties function)
 from trezor.ui.components.tt.scroll import Paginated
 from trezor.ui.components.tt.text import Text
 from trezor.utils import chunks
@@ -24,26 +27,30 @@ from . import networks, tokens
 from .address import address_from_bytes
 
 
-def decode_data(data, type_name: str) -> str:
+def decode_data(data: bytes, type_name: str) -> str:
     if type_name == "bytes":
+        # TODO: cannot this throw UnicodeError?
         return data.decode()
     elif type_name == "string":
         return data.decode()
     elif type_name == "address":
-        return "0x" + hexlify(data).decode()
+        return address_from_bytes(data)
     elif type_name == "bool":
-        return "True" if data == b"\x01" else "False"
+        return "true" if data == b"\x01" else "false"
     elif type_name.startswith("int") or type_name.startswith("uint"):
         is_signed = type_name.startswith("int")
-        # TODO: this does not show negative ints for some reason, in normal python it works fine
-        return str(int.from_bytes(data, "big", is_signed))
+        value = int.from_bytes(data, "big")
+        if is_signed:
+            # Micropython does not implement "signed" arg in int.from_bytes()
+            # TODO: Write our own function to convert it into signed integer
+            return str(value)
+        else:
+            return str(value)
 
     raise ValueError  # Unsupported data type for direct field decoding
 
 
-async def confirm_typed_domain_brief(
-    ctx: Context, domain_values: dict
-) -> bool:
+async def confirm_typed_domain_brief(ctx: Context, domain_values: dict) -> bool:
     page = Text("Typed Data", ui.ICON_SEND, icon_color=ui.GREEN)
 
     domain_name = decode_data(domain_values.get("name"), "string")

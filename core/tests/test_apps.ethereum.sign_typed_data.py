@@ -1,5 +1,7 @@
 from common import *
 
+from trezor import wire
+
 if not utils.BITCOIN_ONLY:
     from apps.ethereum.sign_typed_data import (
         hash_struct,
@@ -7,6 +9,7 @@ if not utils.BITCOIN_ONLY:
         encode_type,
         hash_type,
         encode_field,
+        validate_field,
         find_typed_dependencies,
         keccak256,
         EthereumDataType,
@@ -215,6 +218,8 @@ MESSAGE_VALUES_LIST = {
     },
 }
 
+# TODO: validate all by some third party app, like signing data by Metamask
+
 
 @unittest.skipUnless(not utils.BITCOIN_ONLY, "altcoin")
 class TestEthereumSignTypedData(unittest.TestCase):
@@ -360,6 +365,7 @@ class TestEthereumSignTypedData(unittest.TestCase):
             self.assertEqual(res, expected)
 
     def test_encode_field(self):
+        # TODO: need to add a fake writer and check it really got written
         VECTORS = (
             (
                 {"data_type": EthereumDataType.STRING, "size": None},
@@ -401,14 +407,78 @@ class TestEthereumSignTypedData(unittest.TestCase):
                 b"\x00",
                 b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
             ),
+            (
+                {
+                    "data_type": EthereumDataType.ARRAY,
+                    "size": None,
+                    "entry_type": {"data_type": EthereumDataType.STRING, "size": None},
+                },
+                [b"String A", b"Second string", b"another Text"],
+                b"h\x0cn<\xe4\xc0}\x0by\xfa\x18\xa292\xd6@\x82\xd5\x82\x18\x9e;S\xe0\x1f\x19\xa9X3u\xbb\x8e",
+            ),
+            (
+                {
+                    "data_type": EthereumDataType.STRUCT,
+                    "size": 2,
+                    "type_name": "Person",
+                },
+                {
+                    "name": b"Bob",
+                    "wallet": b"T\xb0\xfaf\xa0et\x8c@\xdc\xa2\xc7\xfe\x12Z (\xcf\x99\x82",
+                },
+                b"5'H\x1b_\xa5a5\x06\x04\xa6\rsOI\xee\x90\x7f\x17O[\xa6\xbby\x1a\xabAun\xce~\xd1",
+            ),
         )
 
         for field, value, expected in VECTORS:
             res = encode_field(
-                field=field,
-                value=value,
+                field=field, value=value, types=MESSAGE_TYPES_BASIC, use_v4=True
             )
             self.assertEqual(res, expected)
+
+    def test_validate_field(self):
+        VECTORS_VALID_INVALID = (
+            (
+                {"data_type": EthereumDataType.UINT, "size": 1, "type_name": "uint8"},
+                [b"\xff"],
+                [b"\xff\xee"],
+            ),
+            (
+                {"data_type": EthereumDataType.UINT, "size": 8, "type_name": "bytes8"},
+                [b"\xff" * 8],
+                [b"\xff" * 7, b"\xff" * 9],
+            ),
+            (
+                {"data_type": EthereumDataType.BOOL, "size": None, "type_name": "bool"},
+                [b"\x00", b"\x01"],
+                [b"0", b"\x00\x01"],
+            ),
+            (
+                {
+                    "data_type": EthereumDataType.STRING,
+                    "size": None,
+                    "type_name": "string",
+                },
+                [b"\x7f", b"a" * 1024],
+                [b"\x80", b"a" * 1025],
+            ),
+            (
+                {
+                    "data_type": EthereumDataType.ADDRESS,
+                    "size": None,
+                    "type_name": "address",
+                },
+                [b"T\xb0\xfaf\xa0et\x8c@\xdc\xa2\xc7\xfe\x12Z (\xcf\x99\x82"],
+                [b"T\xb0\xfaf\xa0et\x8c@\xdc\xa2\xc7\xfe\x12Z (\xcf\x99"],
+            ),
+        )
+
+        for field, valid_values, invalid_values in VECTORS_VALID_INVALID:
+            for valid_value in valid_values:
+                validate_field(field, valid_value)
+            for invalid_value in invalid_values:
+                with self.assertRaises(wire.DataError):
+                    validate_field(field, invalid_value)
 
 
 if __name__ == "__main__":

@@ -88,7 +88,7 @@ def _parse_access_list_item(value):
     try:
         arr = value.split(":")
         address, storage_keys = arr[0], arr[1:]
-        storage_keys_bytes = [_decode_hex(key) for key in storage_keys]
+        storage_keys_bytes = [ethereum.decode_hex(key) for key in storage_keys]
         return ethereum.messages.EthereumAccessList(address, storage_keys_bytes)
 
     except Exception:
@@ -102,13 +102,6 @@ def _list_units(ctx, param, value):
     for unit, scale in ETHER_UNITS.items():
         click.echo("{:{maxlen}}:  {}".format(unit, scale, maxlen=maxlen))
     ctx.exit()
-
-
-def _decode_hex(value):
-    if value.startswith("0x") or value.startswith("0X"):
-        return bytes.fromhex(value[2:])
-    else:
-        return bytes.fromhex(value)
 
 
 def _erc20_contract(w3, token_address, to_address, amount):
@@ -130,7 +123,7 @@ def _erc20_contract(w3, token_address, to_address, amount):
 
 def _format_access_list(access_list: List[ethereum.messages.EthereumAccessList]):
     mapped = map(
-        lambda item: [_decode_hex(item.address), item.storage_keys],
+        lambda item: [ethereum.decode_hex(item.address), item.storage_keys],
         access_list,
     )
     return list(mapped)
@@ -291,7 +284,7 @@ def sign_tx(
         amount = 0
 
     if data:
-        data = _decode_hex(data)
+        data = ethereum.decode_hex(data)
     else:
         data = b""
 
@@ -340,7 +333,7 @@ def sign_tx(
         )
     )
 
-    to = _decode_hex(to_address)
+    to = ethereum.decode_hex(to_address)
     if is_eip1559:
         transaction = rlp.encode(
             (
@@ -417,5 +410,5 @@ def sign_typed_data(client, address, use_v4, file):
 @with_client
 def verify_message(client, address, signature, message):
     """Verify message signed with Ethereum address."""
-    signature = _decode_hex(signature)
+    signature = ethereum.decode_hex(signature)
     return ethereum.verify_message(client, address, signature, message)

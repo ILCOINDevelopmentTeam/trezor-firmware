@@ -1,3 +1,4 @@
+from trezor import wire
 from trezor.crypto.curve import secp256k1
 from trezor.crypto.hashlib import sha3_256
 from trezor.messages import EthereumTypedDataValueAck
@@ -74,7 +75,7 @@ async def generate_typed_data_hash(
             ctx, primary_type, message_types, message_values
         )
 
-    # TODO: the use_v4 variable is not used at all now, either implement it or delete it
+    # TODO: the use_v4 variable is not used at all now, implement it
     domain_separator = hash_struct("EIP712Domain", domain_values, domain_types, use_v4)
     message_hash = hash_struct(primary_type, message_values, message_types, use_v4)
 
@@ -137,6 +138,10 @@ def hash_struct(
     """
     Encodes and hashes an object using Keccak256
     """
+    # TODO: create hashwriter object and pass it through other functions
+    # w: Writer
+    # w.append, w.extend methods
+    # return w.digest()
     type_hash = hash_type(primary_type, types)
     encoded_data = encode_data(primary_type, data, types, use_v4)
     return keccak256(type_hash + encoded_data)
@@ -160,75 +165,80 @@ def encode_data(
     result = b""
 
     for field in types[primary_type]:
-        # Structs are handled on their own, arrays are also special
-        if field["data_type"] == EthereumDataType.STRUCT:
-            # SPEC: The struct values are encoded recursively as hashStruct(value)
-            encoded_value = hash_struct(
-                field["type_name"], data[field["name"]], types, use_v4
-            )
-        elif field["data_type"] == EthereumDataType.ARRAY:
-            # SPEC:
-            # The array values are encoded as the keccak256 hash of the concatenated
-            # encodeData of their contents
-            # TODO: We need to account for possible structs in array
-            buf = b""
-            for value in data[field["name"]]:
-                buf += encode_field(
-                    field=field["entry_type"],
-                    value=value,
-                )
-            encoded_value = keccak256(buf)
-        else:
-            encoded_value = encode_field(
-                field=field,
-                value=data[field["name"]],
-            )
+        encoded_value = encode_field(
+            field=field,
+            value=data[field["name"]],
+            types=types,
+            use_v4=use_v4,
+        )
         result += encoded_value
 
     return result
 
 
-def encode_field(field: dict, value) -> bytes:
+def encode_field(
+    field: dict, value: bytes, types: dict = None, use_v4: bool = True
+) -> bytes:
     """
     SPEC:
-    The atomic values are encoded as follows:
-    Boolean false and true are encoded as uint256 values 0 and 1 respectively.
-    Addresses are encoded as uint160. Integer values are sign-extended to 256-bit and
-    encoded in big endian order. bytes1 to bytes31 are arrays with a beginning (index 0)
-    and an end (index length - 1), they are zero-padded at the end to bytes32 and encoded
-    in beginning to end order.
-    The dynamic values bytes and string are encoded as a keccak256 hash of their contents.
+    Atomic types:
+    - Boolean false and true are encoded as uint256 values 0 and 1 respectively
+    - Addresses are encoded as uint160
+    - Integer values are sign-extended to 256-bit and encoded in big endian order
+    - Bytes1 to bytes31 are arrays with a beginning (index 0)
+      and an end (index length - 1), they are zero-padded at the end to bytes32 and encoded
+      in beginning to end order
+    Dynamic types:
+    - Bytes and string are encoded as a keccak256 hash of their contents
+    Reference types:
+    - Array values are encoded as the keccak256 hash of the concatenated
+      encodeData of their contents
+    - Struct values are encoded recursively as hashStruct(value)
     """
     data_type = field["data_type"]
-    size = field["size"]
-    if data_type == EthereumDataType.UINT:
-        return convert_number_to_32_bytes(value)
-    elif data_type == EthereumDataType.INT:
-        return convert_number_to_32_bytes(value, is_signed=True)
+
+    # Arrays and structs need special recursive handling
+    if data_type == EthereumDataType.ARRAY:
+        buf = b""
+        for element in value:
+            buf += encode_field(
+                field=field["entry_type"],
+                value=element,
+                types=types,
+                use_v4=use_v4,
+            )
+        return keccak256(buf)
+    elif data_type == EthereumDataType.STRUCT:
+        return hash_struct(
+            primary_type=field["type_name"],
+            data=value,
+            types=types,
+            use_v4=use_v4,
+        )
     elif data_type == EthereumDataType.BYTES:
-        # NOTE: not tested
-        # TODO: is there a standard of transmitting bytes in json?
-        if size is None:
+        if field["size"] is None:
             return keccak256(value)
         else:
             return set_length_right(value, 32)
     elif data_type == EthereumDataType.STRING:
         return keccak256(value)
-    elif data_type == EthereumDataType.BOOL:
-        if value not in [b"\x00", b"\x01"]:
-            raise ValueError  # Unsupported value for boolean
+    elif data_type in [
+        EthereumDataType.UINT,
+        EthereumDataType.INT,
+        EthereumDataType.BOOL,
+        EthereumDataType.ADDRESS,
+    ]:
         return convert_number_to_32_bytes(value)
-    elif data_type == EthereumDataType.ADDRESS:
-        return convert_number_to_32_bytes(value)
 
-    # Structs and arrays should not be encoded directly by this function
-    raise ValueError  # Unsupported data type for direct field encoding
+    raise ValueError  # Unsupported data type for field encoding
 
 
-def convert_number_to_32_bytes(value: bytes, is_signed: bool = False) -> bytes:
-    # TODO: there could be some easier/direct conversion than through int
-    num = int.from_bytes(value, "big", is_signed)
-    return num.to_bytes(32, "big", is_signed)
+def convert_number_to_32_bytes(value: bytes) -> bytes:
+    if len(value) > 32:
+        raise ValueError  # Number is bigger than 32 bytes
+
+    missing_bytes = 32 - len(value)
+    return missing_bytes * b"\x00" + value
 
 
 def set_length_right(msg: bytes, length: int) -> bytes:
@@ -236,10 +246,10 @@ def set_length_right(msg: bytes, length: int) -> bytes:
     Pads a `msg` with zeros till it has `length` bytes.
     Truncates the end of input if its length exceeds `length`.
     """
-    # TODO: the SPEC may say something different: (test it on bytes16 for example)
     # SPEC:
     # bytes1 to bytes31 are arrays with a beginning (index 0) and an end (index length - 1),
     # they are zero-padded at the end to bytes32 and encoded in beginning to end order
+    # TODO: modify it for Writer
     if len(msg) < length:
         buf = bytearray(length)
         buf[: len(msg)] = msg
@@ -264,7 +274,6 @@ async def collect_values(
     for field_index, field in enumerate(struct):
         field_name = field["name"]
         field_type = field["data_type"]
-        field_size = field["size"]
         member_value_path = member_path + [field_index]
 
         # Structs need to be handled recursively, arrays are also special
@@ -280,19 +289,68 @@ async def collect_values(
             arr = []
             for i in range(array_size):
                 res = await request_member_value(ctx, member_value_path + [i])
+                validate_field(field["entry_type"], res.value)
                 arr.append(res.value)
             values[field_name] = arr
         else:
             res = await request_member_value(ctx, member_value_path)
-            # Checking if the size corresponds to what is defined in types,
-            # and also setting our maximum size as 1024 bytes
-            if field_size is not None:
-                assert field_size == len(res.value)
-            else:
-                assert len(res.value) <= 1024
+            validate_field(field, res.value)
             values[field_name] = res.value
 
     return values
+
+
+def validate_field(field: dict, value: bytes) -> None:
+    """
+    Makes sure the byte data we receive are not corrupted or incorrect
+
+    Raises wire.DataError if it encounters a problem, so it is
+    """
+    # Checking if the size corresponds to what is defined in types,
+    # and also setting our maximum supported size in bytes
+    field_size = field["size"]
+    field_type = field["data_type"]
+    type_name = field["type_name"]
+    if field_size is not None:
+        if len(value) != field_size:
+            raise wire.DataError(
+                "Value {} of type {} does not match its expected byte size of {}, its size is {}.".format(
+                    value, type_name, field_size, len(value)
+                )
+            )
+    else:
+        max_byte_size = 1024
+        if len(value) > max_byte_size:
+            raise wire.DataError(
+                "Value {} of type {} exceeds maximum supported byte size of {}, its size is {}.".format(
+                    value, type_name, max_byte_size, len(value)
+                )
+            )
+
+    # Specific tests for some data types
+    if field_type == EthereumDataType.BOOL:
+        supported_options = [b"\x00", b"\x01"]
+        if value not in supported_options:
+            raise wire.DataError(
+                "Value {} of type bool is not supported. Possible options are {}.".format(
+                    value, supported_options
+                )
+            )
+    elif field_type == EthereumDataType.ADDRESS:
+        expected_length = 20
+        if len(value) != expected_length:
+            raise wire.DataError(
+                "Value {} of type address does not have expected byte length of {}, its size is {}.".format(
+                    value, expected_length, len(value)
+                )
+            )
+    elif field_type == EthereumDataType.STRING:
+        try:
+            value.decode()
+        except UnicodeError:
+            raise wire.DataError(
+                "Value {} of type string is not utf-8 encoded.".format(value)
+            )
 
 
 def hash_type(primary_type: str, types: dict) -> bytes:
