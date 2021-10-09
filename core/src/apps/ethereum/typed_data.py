@@ -1,5 +1,256 @@
+if False:
+    from typing import Dict
+
+from ubinascii import hexlify
+
+from trezor import wire
 from trezor.enums import EthereumDataType
 from trezor.messages import EthereumFieldType
+from trezor.messages import EthereumTypedDataStructAck
+
+from trezor.utils import HashWriter
+from trezor.crypto.hashlib import sha3_256
+
+from .address import address_from_bytes
+
+
+def keccak256(message: bytes) -> bytes:
+    h = HashWriter(sha3_256(keccak=True))
+    h.extend(message)
+    return h.get_digest()
+
+
+def hash_struct(
+    primary_type: str,
+    data: dict,
+    types: Dict[str, EthereumTypedDataStructAck],
+    use_v4: bool = True,
+) -> bytes:
+    """
+    Encodes and hashes an object using Keccak256
+    """
+    # TODO: create hashwriter object and pass it through other functions
+    # w: Writer
+    # w.append, w.extend methods
+    # return w.digest()
+    type_hash = hash_type(primary_type, types)
+    encoded_data = encode_data(primary_type, data, types, use_v4)
+    return keccak256(type_hash + encoded_data)
+
+
+def encode_data(
+    primary_type: str,
+    data: dict,
+    types: Dict[str, EthereumTypedDataStructAck],
+    use_v4: bool = True,
+) -> bytes:
+    """
+    Encodes an object by encoding and concatenating each of its members
+
+    SPEC:
+    The encoding of a struct instance is enc(value₁) ‖ enc(value₂) ‖ … ‖ enc(valueₙ),
+    i.e. the concatenation of the encoded member values in the order that they appear in the type.
+    Each encoded member value is exactly 32-byte long.
+
+    primary_type - Root type
+    data - Object to encode
+    types - Type definitions
+    """
+    result = b""
+
+    type_members = types[primary_type].members
+    for member in type_members:
+        encoded_value = encode_field(
+            field=member.type,
+            value=data[member.name],
+            types=types,
+            use_v4=use_v4,
+        )
+        result += encoded_value
+
+    return result
+
+
+def encode_field(
+    field: EthereumFieldType,
+    value: bytes,
+    types: Dict[str, EthereumTypedDataStructAck],
+    use_v4: bool = True,
+) -> bytes:
+    """
+    SPEC:
+    Atomic types:
+    - Boolean false and true are encoded as uint256 values 0 and 1 respectively
+    - Addresses are encoded as uint160
+    - Integer values are sign-extended to 256-bit and encoded in big endian order
+    - Bytes1 to bytes31 are arrays with a beginning (index 0)
+      and an end (index length - 1), they are zero-padded at the end to bytes32 and encoded
+      in beginning to end order
+    Dynamic types:
+    - Bytes and string are encoded as a keccak256 hash of their contents
+    Reference types:
+    - Array values are encoded as the keccak256 hash of the concatenated
+      encodeData of their contents
+    - Struct values are encoded recursively as hashStruct(value)
+    """
+    data_type = field.data_type
+
+    # Arrays and structs need special recursive handling
+    if data_type == EthereumDataType.ARRAY:
+        buf = b""
+        for element in value:
+            buf += encode_field(
+                field=field.entry_type,
+                value=element,
+                types=types,
+                use_v4=use_v4,
+            )
+        return keccak256(buf)
+    elif data_type == EthereumDataType.STRUCT:
+        return hash_struct(
+            primary_type=field.struct_name,
+            data=value,
+            types=types,
+            use_v4=use_v4,
+        )
+    elif data_type == EthereumDataType.BYTES:
+        # TODO: is not tested
+        if field.size is None:
+            return keccak256(value)
+        else:
+            return rightpad32(value)
+    elif data_type == EthereumDataType.STRING:
+        return keccak256(value)
+    elif data_type in [
+        EthereumDataType.UINT,
+        EthereumDataType.INT,
+        EthereumDataType.BOOL,
+        EthereumDataType.ADDRESS,
+    ]:
+        return leftpad32(value)
+
+    raise ValueError  # Unsupported data type for field encoding
+
+
+def leftpad32(value: bytes) -> bytes:
+    if len(value) > 32:
+        raise ValueError  # Number is bigger than 32 bytes
+
+    missing_bytes = 32 - len(value)
+    return missing_bytes * b"\x00" + value
+
+
+def rightpad32(value: bytes) -> bytes:
+    if len(value) > 32:
+        raise ValueError  # Number is bigger than 32 bytes
+
+    missing_bytes = 32 - len(value)
+    return value + missing_bytes * b"\x00"
+
+
+def validate_field(field: EthereumFieldType, field_name: str, value: bytes) -> None:
+    """
+    Makes sure the byte data we receive are not corrupted or incorrect
+
+    Raises wire.DataError if it encounters a problem, so clients are notified
+    """
+    field_size = field.size
+    field_type = field.data_type
+
+    # Checking if the size corresponds to what is defined in types,
+    # and also setting our maximum supported size in bytes
+    if field_size is not None:
+        if len(value) != field_size:
+            raise wire.DataError("{}: invalid length".format(field_name))
+    else:
+        max_byte_size = 1024
+        if len(value) > max_byte_size:
+            raise wire.DataError(
+                "{}: invalid length, bigger than {}".format(field_name, max_byte_size)
+            )
+
+    # Specific tests for some data types
+    if field_type == EthereumDataType.BOOL:
+        if value not in [b"\x00", b"\x01"]:
+            raise wire.DataError("{}: invalid boolean value".format(field_name))
+    elif field_type == EthereumDataType.ADDRESS:
+        if len(value) != 20:
+            raise wire.DataError("{}: invalid address".format(field_name))
+    elif field_type == EthereumDataType.STRING:
+        try:
+            value.decode()
+        except UnicodeError:
+            raise wire.DataError("{}: invalid UTF-8".format(field_name))
+
+
+def hash_type(primary_type: str, types: Dict[str, EthereumTypedDataStructAck]) -> bytes:
+    """
+    Encodes and hashes a type using Keccak256
+    """
+    return keccak256(encode_type(primary_type, types))
+
+
+def encode_type(
+    primary_type: str, types: Dict[str, EthereumTypedDataStructAck]
+) -> bytes:
+    """
+    Encodes the type of an object by encoding a comma delimited list of its members
+
+    SPEC:
+    The type of a struct is encoded as name ‖ "(" ‖ member₁ ‖ "," ‖ member₂ ‖ "," ‖ … ‖ memberₙ ")"
+    where each member is written as type ‖ " " ‖ name
+    If the struct type references other struct types (and these in turn reference even more struct types),
+    then the set of referenced struct types is collected, sorted by name and appended to the encoding.
+
+    primary_type - Root type to encode
+    types - Type definitions
+    """
+    result = b""
+
+    deps = find_typed_dependencies(primary_type, types)
+    non_primary_deps = [dep for dep in deps if dep != primary_type]
+    primary_first_sorted_deps = [primary_type] + sorted(non_primary_deps)
+
+    for type_name in primary_first_sorted_deps:
+        members = types[type_name].members
+        fields = ",".join(["%s %s" % (get_type_name(m.type), m.name) for m in members])
+        result += b"%s(%s)" % (type_name, fields)
+
+    return result
+
+
+def find_typed_dependencies(
+    primary_type: str,
+    types: Dict[str, EthereumTypedDataStructAck],
+    results: list = None,
+) -> list:
+    """
+    Finds all types within a type definition object
+
+    primary_type - Root type
+    types - Type definitions
+    results - Current set of accumulated types
+    """
+    if results is None:
+        results = []
+
+    # When being an array, getting the part before the square brackets
+    if primary_type[-1] == "]":
+        primary_type = primary_type[: primary_type.index("[")]
+
+    # We already have this type or it is not even a defined type
+    if (primary_type in results) or (primary_type not in types):
+        return results
+
+    results.append(primary_type)
+
+    # Recursively adding all the children struct types
+    type_members = types[primary_type].members
+    for member in type_members:
+        if member.type.data_type == EthereumDataType.STRUCT:
+            results = find_typed_dependencies(member.type.struct_name, types, results)
+
+    return results
 
 
 def get_type_name(field: EthereumFieldType) -> str:
@@ -34,3 +285,35 @@ def get_type_name(field: EthereumFieldType) -> str:
             return TYPE_TRANSLATION_DICT[data_type] + str(size)
         else:
             return TYPE_TRANSLATION_DICT[data_type]
+
+    raise ValueError  # Unsupported data type
+
+
+def decode_data(data: bytes, type_name: str) -> str:
+    if type_name == "bytes":
+        return hexlify(data).decode()
+    elif type_name == "string":
+        return data.decode()
+    elif type_name == "address":
+        return address_from_bytes(data)
+    elif type_name == "bool":
+        return "true" if data == b"\x01" else "false"
+    elif type_name.startswith("uint"):
+        return str(int.from_bytes(data, "big"))
+    elif type_name.startswith("int"):
+        # Micropython does not implement "signed" arg in int.from_bytes()
+        return str(from_bytes_to_bigendian_signed(data))
+
+    raise ValueError  # Unsupported data type for direct field decoding
+
+
+def from_bytes_to_bigendian_signed(b: bytes) -> int:
+    negative = b[0] & 0x80
+    if negative:
+        neg_b = bytearray(b)
+        for i in range(len(neg_b)):
+            neg_b[i] = ~neg_b[i] & 0xFF
+        result = int.from_bytes(neg_b, "big")
+        return -result - 1
+    else:
+        return int.from_bytes(b, "big")

@@ -168,7 +168,7 @@ def encode_data(value: Any, type_name: str) -> bytes:
         byte_length = get_byte_size_for_int_type(type_name)
         return int(value).to_bytes(byte_length, "big", signed=type_name.startswith("int"))
     elif type_name == "bool":
-        if value not in [True, False]:
+        if not isinstance(value, bool):
             raise ValueError(f"Invalid bool value - {value}")
         num = 1 if value is True else 0
         return num.to_bytes(1, "big")

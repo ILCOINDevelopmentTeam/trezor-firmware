@@ -10,7 +10,7 @@ from trezor.enums import EthereumDataType
 
 
 if not utils.BITCOIN_ONLY:
-    from apps.ethereum.sign_typed_data import (
+    from apps.ethereum.typed_data import (
         hash_struct,
         encode_data,
         encode_type,
@@ -19,8 +19,9 @@ if not utils.BITCOIN_ONLY:
         validate_field,
         find_typed_dependencies,
         keccak256,
+        get_type_name,
+        decode_data,
     )
-    from apps.ethereum.typed_data import get_type_name
 
 DOMAIN_TYPES = {
     "EIP712Domain": EthereumTypedDataStructAck(
@@ -567,6 +568,59 @@ class TestEthereumSignTypedData(unittest.TestCase):
 
         for field, expected in VECTORS:
             res = get_type_name(field)
+            self.assertEqual(res, expected)
+
+    def test_decode_data(self):
+        VECTORS = (  # data, type_name, expected
+            (
+                b"\x4a\x56",
+                "bytes",
+                "4a56"
+            ),
+            (
+                b"Hello, Bob!",
+                "string",
+                "Hello, Bob!"
+            ),
+            (
+                b"\x1e\n\xe8 ^\x97&\xe6\xf2\x96\xab\x88i\x16\nd#\xe23~",
+                "address",
+                "0x1e0Ae8205e9726E6F296ab8869160A6423E2337E"
+            ),
+            (
+                b"\x01",
+                "bool",
+                "true"
+            ),
+            (
+                b"\x00",
+                "bool",
+                "false"
+            ),
+            (
+                b"\x3f\x46\xaa",
+                "uint",
+                "4146858"
+            ),
+            (
+                b"\x3f\x46\xaa",
+                "int",
+                "4146858"
+            ),
+            (
+                b"\xff\xf1",
+                "uint",
+                "65521"
+            ),
+            (
+                b"\xff\xf1",
+                "int",
+                "-15"
+            ),
+        )
+
+        for data, type_name, expected in VECTORS:
+            res = decode_data(data, type_name)
             self.assertEqual(res, expected)
 
 

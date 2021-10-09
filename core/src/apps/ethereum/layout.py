@@ -25,37 +25,7 @@ from apps.common.confirm import confirm, require_confirm, require_hold_to_confir
 
 from . import networks, tokens
 from .address import address_from_bytes
-from .typed_data import get_type_name
-
-
-def decode_data(data: bytes, type_name: str) -> str:
-    if type_name == "bytes":
-        return hexlify(data).decode()
-    elif type_name == "string":
-        return data.decode()
-    elif type_name == "address":
-        return address_from_bytes(data)
-    elif type_name == "bool":
-        return "true" if data == b"\x01" else "false"
-    elif type_name.startswith("uint"):
-        return str(int.from_bytes(data, "big"))
-    elif type_name.startswith("int"):
-        # Micropython does not implement "signed" arg in int.from_bytes()
-        return str(from_bytes_to_bigendian_signed(data))
-
-    raise ValueError  # Unsupported data type for direct field decoding
-
-
-def from_bytes_to_bigendian_signed(b: bytes) -> int:
-    negative = b[0] & 0x80
-    if negative:
-        neg_b = bytearray(b)
-        for i in range(len(neg_b)):
-            neg_b[i] = ~neg_b[i] & 0xFF
-        result = int.from_bytes(neg_b, "big")
-        return -result - 1
-    else:
-        return int.from_bytes(b, "big")
+from .typed_data import get_type_name, decode_data
 
 
 async def confirm_typed_domain_brief(ctx: Context, domain_values: dict) -> bool:
