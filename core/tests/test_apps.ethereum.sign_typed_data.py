@@ -1,6 +1,13 @@
 from common import *
 
 from trezor import wire
+from trezor.messages import (
+    EthereumTypedDataStructAck,
+    EthereumStructMember,
+    EthereumFieldType,
+)
+from trezor.enums import EthereumDataType
+
 
 if not utils.BITCOIN_ONLY:
     from apps.ethereum.sign_typed_data import (
@@ -12,81 +19,105 @@ if not utils.BITCOIN_ONLY:
         validate_field,
         find_typed_dependencies,
         keccak256,
-        EthereumDataType,
     )
+    from apps.ethereum.typed_data import get_type_name
 
 DOMAIN_TYPES = {
-    "EIP712Domain": [
-        {
-            "size": None,
-            "data_type": EthereumDataType.STRING,
-            "name": "name",
-            "type_name": "string",
-            "entry_type": None,
-        },
-        {
-            "size": None,
-            "data_type": EthereumDataType.STRING,
-            "name": "version",
-            "type_name": "string",
-            "entry_type": None,
-        },
-        {
-            "size": 32,
-            "data_type": EthereumDataType.UINT,
-            "name": "chainId",
-            "type_name": "uint256",
-            "entry_type": None,
-        },
-        {
-            "size": None,
-            "data_type": EthereumDataType.ADDRESS,
-            "name": "verifyingContract",
-            "type_name": "address",
-            "entry_type": None,
-        },
-    ]
+    "EIP712Domain": EthereumTypedDataStructAck(
+        members=[
+            EthereumStructMember(
+                name="name",
+                type=EthereumFieldType(
+                    size=None,
+                    data_type=EthereumDataType.STRING,
+                    struct_name=None,
+                    entry_type=None,
+                )
+            ),
+            EthereumStructMember(
+                name="version",
+                type=EthereumFieldType(
+                    size=None,
+                    data_type=EthereumDataType.STRING,
+                    struct_name=None,
+                    entry_type=None,
+                )
+            ),
+            EthereumStructMember(
+                name="chainId",
+                type=EthereumFieldType(
+                    size=32,
+                    data_type=EthereumDataType.UINT,
+                    struct_name=None,
+                    entry_type=None,
+                )
+            ),
+            EthereumStructMember(
+                name="verifyingContract",
+                type=EthereumFieldType(
+                    size=None,
+                    data_type=EthereumDataType.ADDRESS,
+                    struct_name=None,
+                    entry_type=None,
+                )
+            ),
+        ]
+    )
 }
 MESSAGE_TYPES_BASIC = {
-    "Mail": [
-        {
-            "size": 2,
-            "data_type": EthereumDataType.STRUCT,
-            "name": "from",
-            "type_name": "Person",
-            "entry_type": None,
-        },
-        {
-            "size": 2,
-            "data_type": EthereumDataType.STRUCT,
-            "name": "to",
-            "type_name": "Person",
-            "entry_type": None,
-        },
-        {
-            "size": None,
-            "data_type": EthereumDataType.STRING,
-            "name": "contents",
-            "type_name": "string",
-            "entry_type": None,
-        },
-    ],
-    "Person": [
-        {
-            "size": None,
-            "data_type": EthereumDataType.STRING,
-            "name": "name",
-            "type_name": "string",
-            "entry_type": None,
-        },
-        {
-            "size": None,
-            "data_type": EthereumDataType.ADDRESS,
-            "name": "wallet",
-            "type_name": "address",
-            "entry_type": None,
-        },
-    ],
+    "Mail": EthereumTypedDataStructAck(
+        members=[
+            EthereumStructMember(
+                name="from",
+                type=EthereumFieldType(
+                    size=2,
+                    data_type=EthereumDataType.STRUCT,
+                    struct_name="Person",
+                    entry_type=None,
+                )
+            ),
+            EthereumStructMember(
+                name="to",
+                type=EthereumFieldType(
+                    size=2,
+                    data_type=EthereumDataType.STRUCT,
+                    struct_name="Person",
+                    entry_type=None,
+                )
+            ),
+            EthereumStructMember(
+                name="contents",
+                type=EthereumFieldType(
+                    size=None,
+                    data_type=EthereumDataType.STRING,
+                    struct_name=None,
+                    entry_type=None,
+                )
+            ),
+        ]
+    ),
+    "Person": EthereumTypedDataStructAck(
+        members=[
+            EthereumStructMember(
+                name="name",
+                type=EthereumFieldType(
+                    size=None,
+                    data_type=EthereumDataType.STRING,
+                    struct_name=None,
+                    entry_type=None,
+                )
+            ),
+            EthereumStructMember(
+                name="wallet",
+                type=EthereumFieldType(
+                    size=None,
+                    data_type=EthereumDataType.ADDRESS,
+                    struct_name=None,
+                    entry_type=None,
+                )
+            ),
+        ]
+    ),
 }
 # Micropython does not allow for some easy dict merge, being python3.4
 ALL_TYPES_BASIC = {
@@ -114,83 +145,105 @@ MESSAGE_VALUES_BASIC = {
 }
 
 MESSAGE_TYPES_LIST = {
-    "Mail": [
-        {
-            "entry_type": None,
-            "name": "from",
-            "size": 6,
-            "data_type": 8,
-            "type_name": "Person",
-        },
-        {
-            "entry_type": None,
-            "name": "to",
-            "size": 6,
-            "data_type": 8,
-            "type_name": "Person",
-        },
-        {
-            "entry_type": {
-                "size": None,
-                "type_name": "string",
-                "data_type": 4,
-                "entry_type": None,
-            },
-            "name": "messages",
-            "size": None,
-            "data_type": 7,
-            "type_name": "string[]",
-        },
-    ],
-    "Person": [
-        {
-            "entry_type": None,
-            "name": "name",
-            "size": None,
-            "data_type": 4,
-            "type_name": "string",
-        },
-        {
-            "entry_type": None,
-            "name": "wallet",
-            "size": None,
-            "data_type": 6,
-            "type_name": "address",
-        },
-        {
-            "entry_type": None,
-            "name": "married",
-            "size": None,
-            "data_type": 5,
-            "type_name": "bool",
-        },
-        {
-            "entry_type": None,
-            "name": "kids",
-            "size": 1,
-            "data_type": 1,
-            "type_name": "uint8",
-        },
-        {
-            "entry_type": None,
-            "name": "karma",
-            "size": 2,
-            "data_type": 2,
-            "type_name": "int16",
-        },
-        {
-            "entry_type": {
-                "size": None,
-                "type_name": "string",
-                "data_type": 4,
-                "entry_type": None,
-            },
-            "name": "pets",
-            "size": None,
-            "data_type": 7,
-            "type_name": "string[]",
-        },
-    ],
+    "Mail": EthereumTypedDataStructAck(
+        members=[
+            EthereumStructMember(
+                name="from",
+                type=EthereumFieldType(
+                    size=6,
+                    data_type=EthereumDataType.STRUCT,
+                    struct_name="Person",
+                    entry_type=None,
+                )
+            ),
+            EthereumStructMember(
+                name="to",
+                type=EthereumFieldType(
+                    size=6,
+                    data_type=EthereumDataType.STRUCT,
+                    struct_name="Person",
+                    entry_type=None,
+                )
+            ),
+            EthereumStructMember(
+                name="messages",
+                type=EthereumFieldType(
+                    size=None,
+                    data_type=EthereumDataType.ARRAY,
+                    struct_name=None,
+                    entry_type=EthereumFieldType(
+                        size=None,
+                        data_type=EthereumDataType.STRING,
+                        struct_name=None,
+                        entry_type=None,
+                    ),
+                )
+            ),
+        ]
+    ),
+    "Person": EthereumTypedDataStructAck(
+        members=[
+            EthereumStructMember(
+                name="name",
+                type=EthereumFieldType(
+                    size=None,
+                    data_type=EthereumDataType.STRING,
+                    struct_name=None,
+                    entry_type=None,
+                )
+            ),
+            EthereumStructMember(
+                name="wallet",
+                type=EthereumFieldType(
+                    size=None,
+                    data_type=EthereumDataType.ADDRESS,
+                    struct_name=None,
+                    entry_type=None,
+                )
+            ),
+            EthereumStructMember(
+                name="married",
+                type=EthereumFieldType(
+                    size=None,
+                    data_type=EthereumDataType.BOOL,
+                    struct_name=None,
+                    entry_type=None,
+                )
+            ),
+            EthereumStructMember(
+                name="kids",
+                type=EthereumFieldType(
+                    size=1,
+                    data_type=EthereumDataType.UINT,
+                    struct_name=None,
+                    entry_type=None,
+                )
+            ),
+            EthereumStructMember(
+                name="karma",
+                type=EthereumFieldType(
+                    size=2,
+                    data_type=EthereumDataType.INT,
+                    struct_name=None,
+                    entry_type=None,
+                )
+            ),
+            EthereumStructMember(
+                name="pets",
+                type=EthereumFieldType(
+                    size=None,
+                    data_type=EthereumDataType.ARRAY,
+                    struct_name=None,
+                    entry_type=EthereumFieldType(
+                        size=None,
+                        data_type=EthereumDataType.STRING,
+                        struct_name=None,
+                        entry_type=None,
+                    ),
+                )
+            ),
+        ]
+    ),
 }
 ALL_TYPES_LIST = {
     "EIP712Domain": DOMAIN_TYPES["EIP712Domain"],
@@ -225,7 +278,7 @@ MESSAGE_VALUES_LIST = {
 class TestEthereumSignTypedData(unittest.TestCase):
     def test_hash_struct(self):
         """These final expected results generated with the use of eth_account library"""
-        VECTORS = (
+        VECTORS = (  # primary_type, data, types, expected
             (
                 "EIP712Domain",
                 DOMAIN_VALUES,
@@ -255,7 +308,7 @@ class TestEthereumSignTypedData(unittest.TestCase):
             self.assertEqual(res, expected)
 
     def test_encode_data(self):
-        VECTORS = (
+        VECTORS = (  # primary_type, data, types, expected
             (
                 "EIP712Domain",
                 DOMAIN_VALUES,
@@ -285,7 +338,7 @@ class TestEthereumSignTypedData(unittest.TestCase):
             self.assertEqual(res, expected)
 
     def test_encode_type(self):
-        VECTORS = (
+        VECTORS = (  # primary_type, types, expected
             (
                 "EIP712Domain",
                 ALL_TYPES_BASIC,
@@ -314,7 +367,7 @@ class TestEthereumSignTypedData(unittest.TestCase):
             self.assertEqual(res, expected)
 
     def test_hash_type(self):
-        VECTORS = (
+        VECTORS = (  # primary_type, expected
             (
                 "EIP712Domain",
                 keccak256(
@@ -335,7 +388,7 @@ class TestEthereumSignTypedData(unittest.TestCase):
             self.assertEqual(res, expected)
 
     def test_find_typed_dependencies(self):
-        VECTORS = (
+        VECTORS = (  # primary_type, expected
             (
                 "EIP712Domain",
                 ["EIP712Domain"],
@@ -366,62 +419,54 @@ class TestEthereumSignTypedData(unittest.TestCase):
 
     def test_encode_field(self):
         # TODO: need to add a fake writer and check it really got written
-        VECTORS = (
+        VECTORS = (  # field, value, expected
             (
-                {"data_type": EthereumDataType.STRING, "size": None},
+                EthereumFieldType(data_type=EthereumDataType.STRING, size=None),
                 b"Ether Mail",
                 keccak256(b"Ether Mail"),
             ),
             (
-                {"data_type": EthereumDataType.STRING, "size": None},
+                EthereumFieldType(data_type=EthereumDataType.STRING, size=None),
                 b"1",
                 keccak256(b"1"),
             ),
             (
-                {"data_type": EthereumDataType.UINT, "size": 32},
+                EthereumFieldType(data_type=EthereumDataType.UINT, size=32),
                 b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01",
                 b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01",
             ),
             (
-                {"data_type": EthereumDataType.UINT, "size": 4},
+                EthereumFieldType(data_type=EthereumDataType.UINT, size=4),
                 b"\x00\x00\x00\xde",
                 b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xde",
             ),
             (
-                {"data_type": EthereumDataType.INT, "size": 1},
+                EthereumFieldType(data_type=EthereumDataType.INT, size=1),
                 b"\x05",
                 b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x05",
             ),
             (
-                {"data_type": EthereumDataType.ADDRESS, "size": None},
+                EthereumFieldType(data_type=EthereumDataType.ADDRESS, size=None),
                 b"\x1e\n\xe8 ^\x97&\xe6\xf2\x96\xab\x88i\x16\nd#\xe23~",
                 b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x1e\n\xe8 ^\x97&\xe6\xf2\x96\xab\x88i\x16\nd#\xe23~",
             ),
             (
-                {"data_type": EthereumDataType.BOOL, "size": None},
+                EthereumFieldType(data_type=EthereumDataType.BOOL, size=None),
                 b"\x01",
                 b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01",
             ),
             (
-                {"data_type": EthereumDataType.BOOL, "size": None},
+                EthereumFieldType(data_type=EthereumDataType.BOOL, size=None),
                 b"\x00",
                 b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
             ),
             (
-                {
-                    "data_type": EthereumDataType.ARRAY,
-                    "size": None,
-                    "entry_type": {"data_type": EthereumDataType.STRING, "size": None},
-                },
+                EthereumFieldType(data_type=EthereumDataType.ARRAY, size=None, entry_type=EthereumFieldType(data_type=EthereumDataType.STRING)),
                 [b"String A", b"Second string", b"another Text"],
                 b"h\x0cn<\xe4\xc0}\x0by\xfa\x18\xa292\xd6@\x82\xd5\x82\x18\x9e;S\xe0\x1f\x19\xa9X3u\xbb\x8e",
             ),
             (
-                {
-                    "data_type": EthereumDataType.STRUCT,
-                    "size": 2,
-                    "type_name": "Person",
-                },
+                EthereumFieldType(data_type=EthereumDataType.STRUCT, size=2, struct_name="Person"),
                 {
                     "name": b"Bob",
                     "wallet": b"T\xb0\xfaf\xa0et\x8c@\xdc\xa2\xc7\xfe\x12Z (\xcf\x99\x82",
@@ -437,37 +482,29 @@ class TestEthereumSignTypedData(unittest.TestCase):
             self.assertEqual(res, expected)
 
     def test_validate_field(self):
-        VECTORS_VALID_INVALID = (
+        VECTORS_VALID_INVALID = (  # field, valid_values, invalid_values
             (
-                {"data_type": EthereumDataType.UINT, "size": 1, "type_name": "uint8"},
+                EthereumFieldType(data_type=EthereumDataType.UINT, size=1),
                 [b"\xff"],
                 [b"\xff\xee"],
             ),
             (
-                {"data_type": EthereumDataType.UINT, "size": 8, "type_name": "bytes8"},
+                EthereumFieldType(data_type=EthereumDataType.BYTES, size=8),
                 [b"\xff" * 8],
                 [b"\xff" * 7, b"\xff" * 9],
             ),
             (
-                {"data_type": EthereumDataType.BOOL, "size": None, "type_name": "bool"},
+                EthereumFieldType(data_type=EthereumDataType.BOOL, size=None),
                 [b"\x00", b"\x01"],
                 [b"0", b"\x00\x01"],
             ),
             (
-                {
-                    "data_type": EthereumDataType.STRING,
-                    "size": None,
-                    "type_name": "string",
-                },
+                EthereumFieldType(data_type=EthereumDataType.STRING, size=None),
                 [b"\x7f", b"a" * 1024],
                 [b"\x80", b"a" * 1025],
             ),
             (
-                {
-                    "data_type": EthereumDataType.ADDRESS,
-                    "size": None,
-                    "type_name": "address",
-                },
+                EthereumFieldType(data_type=EthereumDataType.ADDRESS, size=None),
                 [b"T\xb0\xfaf\xa0et\x8c@\xdc\xa2\xc7\xfe\x12Z (\xcf\x99\x82"],
                 [b"T\xb0\xfaf\xa0et\x8c@\xdc\xa2\xc7\xfe\x12Z (\xcf\x99"],
             ),
@@ -475,10 +512,62 @@ class TestEthereumSignTypedData(unittest.TestCase):
 
         for field, valid_values, invalid_values in VECTORS_VALID_INVALID:
             for valid_value in valid_values:
-                validate_field(field, valid_value)
+                validate_field(
+                    field=field,
+                    field_name="test",
+                    value=valid_value
+                )
             for invalid_value in invalid_values:
                 with self.assertRaises(wire.DataError):
-                    validate_field(field, invalid_value)
+                    validate_field(
+                        field=field,
+                        field_name="test",
+                        value=invalid_value
+                    )
+
+    def test_get_type_name(self):
+        VECTORS = (  # field, expected
+            (
+                EthereumFieldType(data_type=EthereumDataType.ARRAY, size=None, entry_type=EthereumFieldType(data_type=EthereumDataType.UINT, size=32)),
+                "uint256[]",
+            ),
+            (
+                EthereumFieldType(data_type=EthereumDataType.STRUCT, size=2, struct_name="Person"),
+                "Person",
+            ),
+            (
+                EthereumFieldType(data_type=EthereumDataType.STRING, size=None),
+                "string",
+            ),
+            (
+                EthereumFieldType(data_type=EthereumDataType.ADDRESS, size=None),
+                "address",
+            ),
+            (
+                EthereumFieldType(data_type=EthereumDataType.BOOL, size=None),
+                "bool",
+            ),
+            (
+                EthereumFieldType(data_type=EthereumDataType.UINT, size=20),
+                "uint160",
+            ),
+            (
+                EthereumFieldType(data_type=EthereumDataType.INT, size=8),
+                "int64",
+            ),
+            (
+                EthereumFieldType(data_type=EthereumDataType.BYTES, size=8),
+                "bytes8",
+            ),
+            (
+                EthereumFieldType(data_type=EthereumDataType.BYTES, size=None),
+                "bytes",
+            ),
+        )
+
+        for field, expected in VECTORS:
+            res = get_type_name(field)
+            self.assertEqual(res, expected)
 
 
 if __name__ == "__main__":

@@ -120,6 +120,7 @@ def get_field_type(type_name: str, types: dict) -> messages.EthereumFieldType:
     data_type = None
     size = None
     entry_type = None
+    struct_name = None
 
     if is_array(type_name):
         data_type = messages.EthereumDataType.ARRAY
@@ -145,6 +146,7 @@ def get_field_type(type_name: str, types: dict) -> messages.EthereumFieldType:
     elif type_name in types:
         data_type = messages.EthereumDataType.STRUCT
         size = len(types[type_name])
+        struct_name = type_name
     else:
         raise ValueError(f"Unsupported type name: {type_name}")
 
@@ -152,7 +154,7 @@ def get_field_type(type_name: str, types: dict) -> messages.EthereumFieldType:
         data_type=data_type,
         size=size,
         entry_type=entry_type,
-        type_name=type_name,
+        struct_name=struct_name,
     )
 
 

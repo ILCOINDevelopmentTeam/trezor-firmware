@@ -3344,17 +3344,17 @@ if TYPE_CHECKING:
 
     class EthereumFieldType(protobuf.MessageType):
         data_type: "EthereumDataType"
-        type_name: "str"
         size: "int | None"
         entry_type: "EthereumFieldType | None"
+        struct_name: "str | None"
 
         def __init__(
             self,
             *,
             data_type: "EthereumDataType",
-            type_name: "str",
             size: "int | None" = None,
             entry_type: "EthereumFieldType | None" = None,
+            struct_name: "str | None" = None,
         ) -> None:
             pass
 

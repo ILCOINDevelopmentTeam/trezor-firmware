@@ -25,29 +25,37 @@ from apps.common.confirm import confirm, require_confirm, require_hold_to_confir
 
 from . import networks, tokens
 from .address import address_from_bytes
+from .typed_data import get_type_name
 
 
 def decode_data(data: bytes, type_name: str) -> str:
     if type_name == "bytes":
-        # TODO: cannot this throw UnicodeError?
-        return data.decode()
+        return hexlify(data).decode()
     elif type_name == "string":
         return data.decode()
     elif type_name == "address":
         return address_from_bytes(data)
     elif type_name == "bool":
         return "true" if data == b"\x01" else "false"
-    elif type_name.startswith("int") or type_name.startswith("uint"):
-        is_signed = type_name.startswith("int")
-        value = int.from_bytes(data, "big")
-        if is_signed:
-            # Micropython does not implement "signed" arg in int.from_bytes()
-            # TODO: Write our own function to convert it into signed integer
-            return str(value)
-        else:
-            return str(value)
+    elif type_name.startswith("uint"):
+        return str(int.from_bytes(data, "big"))
+    elif type_name.startswith("int"):
+        # Micropython does not implement "signed" arg in int.from_bytes()
+        return str(from_bytes_to_bigendian_signed(data))
 
     raise ValueError  # Unsupported data type for direct field decoding
+
+
+def from_bytes_to_bigendian_signed(b: bytes) -> int:
+    negative = b[0] & 0x80
+    if negative:
+        neg_b = bytearray(b)
+        for i in range(len(neg_b)):
+            neg_b[i] = ~neg_b[i] & 0xFF
+        result = int.from_bytes(neg_b, "big")
+        return -result - 1
+    else:
+        return int.from_bytes(b, "big")
 
 
 async def confirm_typed_domain_brief(ctx: Context, domain_values: dict) -> bool:
@@ -76,14 +84,19 @@ async def require_confirm_typed_domain(
         return page
 
     pages = []
-    for type_def in domain_types:
-        value = domain_values[type_def["name"]]
+    domain_type_members = domain_types.members
+    for member in domain_type_members:
+        field_name = member.name
+        field_type = get_type_name(member.type)
+        value = domain_values[field_name]
         pages.append(
             make_field_page(
-                title="EIP712Domain {}/{}".format(len(pages) + 1, len(domain_types)),
-                field_name=limit_str(type_def["name"]),
-                type_name=limit_str(type_def["type_name"]),
-                field_value=decode_data(value, type_def["type_name"]),
+                title="EIP712Domain {}/{}".format(
+                    len(pages) + 1, len(domain_type_members)
+                ),
+                field_name=limit_str(field_name),
+                type_name=limit_str(field_type),
+                field_value=decode_data(value, field_type),
             )
         )
 
@@ -102,11 +115,11 @@ async def confirm_typed_data_brief(
     fields_amount = len(fields)
     if fields_amount > MAX_FIELDS_TO_SHOW:
         for field in fields[:MAX_FIELDS_TO_SHOW]:
-            page.bold(limit_str(field["name"]))
+            page.bold(limit_str(field.name))
         page.mono("...and {} more.".format(fields_amount - MAX_FIELDS_TO_SHOW))
     else:
         for field in fields:
-            page.bold(limit_str(field["name"]))
+            page.bold(limit_str(field.name))
 
     page.mono("View full message?")
 
@@ -138,23 +151,26 @@ async def require_confirm_typed_data(
 
     async def confirm_data(
         root_name: str,
-        type_defs: list,
+        type_members: list,
         data_values,
         require_hold: bool = False,
     ) -> Awaitable[None]:
-        fields_amount = len(type_defs)
+        fields_amount = len(type_members)
+        print("type_members", type_members)
 
         type_view_pages = []
 
-        for field_idx, field in enumerate(type_defs):
-            type_name = field["type_name"]
-            data_type = field["data_type"]
-            field_name = field["name"]
-
+        for field_idx, member in enumerate(type_members):
+            field_name = member.name
             # TODO: it could be made general for both dicts and lists
             if isinstance(data_values, dict):
+                type_name = get_type_name(member.type)
+                data_type = member.type.data_type
                 current_value = data_values[field_name]
             elif isinstance(data_values, list):
+                # TODO: support also nested arrays, this works only for one level
+                type_name = get_type_name(member.type.entry_type)
+                data_type = member.type.entry_type.data_type
                 current_value = data_values[field_idx]
             else:
                 raise ValueError  # Values can be only dict or list
@@ -181,14 +197,11 @@ async def require_confirm_typed_data(
                     ctx, array_preview_page, ButtonRequestType.ConfirmOutput
                 )
                 if go_deeper:
-                    # We need to create a list of type definitions, where the are all the same
-                    type_defs = [field["entry_type"]] * array_len
-                    for i in range(array_len):
-                        type_defs[i]["name"] = field_name + "[]"
-
+                    # We need to create a list of type definitions, where they are all the same
+                    type_members = [member] * array_len
                     await confirm_data(
                         root_name=root_name,
-                        type_defs=type_defs,
+                        type_members=type_members,
                         data_values=current_value,
                         require_hold=False,
                     )
@@ -226,7 +239,7 @@ async def require_confirm_typed_data(
                 if go_deeper:
                     await confirm_data(
                         root_name=field_name,
-                        type_defs=data_types[type_name],
+                        type_members=data_types[type_name].members,
                         data_values=current_value,
                         require_hold=False,
                     )
@@ -266,7 +279,7 @@ async def require_confirm_typed_data(
 
     await confirm_data(
         root_name=primary_type,
-        type_defs=data_types[primary_type],
+        type_members=data_types[primary_type].members,
         data_values=data_values,
         require_hold=True,
     )

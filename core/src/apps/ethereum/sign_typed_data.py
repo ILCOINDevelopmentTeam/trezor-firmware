@@ -1,3 +1,6 @@
+if False:
+    from typing import Dict
+
 from trezor import wire
 from trezor.crypto.curve import secp256k1
 from trezor.crypto.hashlib import sha3_256
@@ -6,12 +9,14 @@ from trezor.messages import EthereumTypedDataValueRequest
 from trezor.messages import EthereumTypedDataSignature
 from trezor.messages import EthereumTypedDataStructAck
 from trezor.messages import EthereumTypedDataStructRequest
+from trezor.messages import EthereumFieldType
 from trezor.enums import EthereumDataType
 from trezor.utils import HashWriter
 
 from apps.common import paths
 
 from . import address
+from .typed_data import get_type_name
 from .keychain import PATTERNS_ADDRESS, with_keychain_from_path
 from .layout import (
     confirm_typed_data_brief,
@@ -68,7 +73,7 @@ async def generate_typed_data_hash(
         )
 
     show_message = await confirm_typed_data_brief(
-        ctx, primary_type, message_types[primary_type]
+        ctx, primary_type, message_types[primary_type].members
     )
     if show_message:
         await require_confirm_typed_data(
@@ -85,55 +90,33 @@ async def generate_typed_data_hash(
     return keccak256(b"\x19" + b"\x01" + domain_separator + message_hash)
 
 
-async def collect_types(ctx, type_name: str, types: dict = None) -> dict:
+async def collect_types(
+    ctx, type_name: str, types: Dict[str, EthereumTypedDataStructAck] = None
+) -> Dict[str, EthereumTypedDataStructAck]:
     """
     Recursively collects types from the client
     """
     if types is None:
         types = {}
 
-    # We already have that type
-    if type_name in types:
-        return types
-
     req = EthereumTypedDataStructRequest(name=type_name)
-    res = await ctx.call(req, EthereumTypedDataStructAck)
-
-    def transfer_member_type_into_dict(member_type) -> dict:
-        # entry type can be nested
-        if member_type.entry_type is not None:
-            entry_type = transfer_member_type_into_dict(member_type.entry_type)
-        else:
-            entry_type = None
-
-        return {
-            "data_type": member_type.data_type,
-            "size": member_type.size,
-            "type_name": member_type.type_name,
-            "entry_type": entry_type,
-        }
-
-    new_types = set()
-    children = []
-    for member in res.members:
-        if member.type.data_type == EthereumDataType.STRUCT:
-            new_types.add(member.type.type_name)
-        type_dict = transfer_member_type_into_dict(member.type)
-        type_dict["name"] = member.name
-        children.append(type_dict)
-
-    types[type_name] = children
-
-    # Recursively accounting for all the new types
-    if len(new_types) > 0:
-        for new_type in new_types:
-            types = await collect_types(ctx, new_type, types)
+    current_type = await ctx.call(req, EthereumTypedDataStructAck)
+    types[type_name] = current_type
+    for member in current_type.members:
+        if (
+            member.type.data_type == EthereumDataType.STRUCT
+            and member.type.struct_name not in types
+        ):
+            types = await collect_types(ctx, member.type.struct_name, types)
 
     return types
 
 
 def hash_struct(
-    primary_type: str, data: dict, types: dict, use_v4: bool = True
+    primary_type: str,
+    data: dict,
+    types: Dict[str, EthereumTypedDataStructAck],
+    use_v4: bool = True,
 ) -> bytes:
     """
     Encodes and hashes an object using Keccak256
@@ -148,7 +131,10 @@ def hash_struct(
 
 
 def encode_data(
-    primary_type: str, data: dict, types: dict, use_v4: bool = True
+    primary_type: str,
+    data: dict,
+    types: Dict[str, EthereumTypedDataStructAck],
+    use_v4: bool = True,
 ) -> bytes:
     """
     Encodes an object by encoding and concatenating each of its members
@@ -164,10 +150,11 @@ def encode_data(
     """
     result = b""
 
-    for field in types[primary_type]:
+    type_members = types[primary_type].members
+    for member in type_members:
         encoded_value = encode_field(
-            field=field,
-            value=data[field["name"]],
+            field=member.type,
+            value=data[member.name],
             types=types,
             use_v4=use_v4,
         )
@@ -177,7 +164,10 @@ def encode_data(
 
 
 def encode_field(
-    field: dict, value: bytes, types: dict = None, use_v4: bool = True
+    field: EthereumFieldType,
+    value: bytes,
+    types: Dict[str, EthereumTypedDataStructAck],
+    use_v4: bool = True,
 ) -> bytes:
     """
     SPEC:
@@ -195,14 +185,14 @@ def encode_field(
       encodeData of their contents
     - Struct values are encoded recursively as hashStruct(value)
     """
-    data_type = field["data_type"]
+    data_type = field.data_type
 
     # Arrays and structs need special recursive handling
     if data_type == EthereumDataType.ARRAY:
         buf = b""
         for element in value:
             buf += encode_field(
-                field=field["entry_type"],
+                field=field.entry_type,
                 value=element,
                 types=types,
                 use_v4=use_v4,
@@ -210,7 +200,7 @@ def encode_field(
         return keccak256(buf)
     elif data_type == EthereumDataType.STRUCT:
         return hash_struct(
-            primary_type=field["type_name"],
+            primary_type=field.struct_name,
             data=value,
             types=types,
             use_v4=use_v4,
@@ -219,7 +209,7 @@ def encode_field(
         if field["size"] is None:
             return keccak256(value)
         else:
-            return set_length_right(value, 32)
+            return rightpad32(value, 32)
     elif data_type == EthereumDataType.STRING:
         return keccak256(value)
     elif data_type in [
@@ -228,12 +218,12 @@ def encode_field(
         EthereumDataType.BOOL,
         EthereumDataType.ADDRESS,
     ]:
-        return convert_number_to_32_bytes(value)
+        return leftpad32(value)
 
     raise ValueError  # Unsupported data type for field encoding
 
 
-def convert_number_to_32_bytes(value: bytes) -> bytes:
+def leftpad32(value: bytes) -> bytes:
     if len(value) > 32:
         raise ValueError  # Number is bigger than 32 bytes
 
@@ -241,25 +231,19 @@ def convert_number_to_32_bytes(value: bytes) -> bytes:
     return missing_bytes * b"\x00" + value
 
 
-def set_length_right(msg: bytes, length: int) -> bytes:
-    """
-    Pads a `msg` with zeros till it has `length` bytes.
-    Truncates the end of input if its length exceeds `length`.
-    """
-    # SPEC:
-    # bytes1 to bytes31 are arrays with a beginning (index 0) and an end (index length - 1),
-    # they are zero-padded at the end to bytes32 and encoded in beginning to end order
-    # TODO: modify it for Writer
-    if len(msg) < length:
-        buf = bytearray(length)
-        buf[: len(msg)] = msg
-        return buf
+def rightpad32(value: bytes) -> bytes:
+    if len(value) > 32:
+        raise ValueError  # Number is bigger than 32 bytes
 
-    return msg[:length]
+    missing_bytes = 32 - len(value)
+    return value + missing_bytes * b"\x00"
 
 
 async def collect_values(
-    ctx, primary_type: str, types: dict, member_path: list = None
+    ctx,
+    primary_type: str,
+    types: Dict[str, EthereumTypedDataStructAck],
+    member_path: list = None,
 ) -> dict:
     """
     Collects data values from the client
@@ -269,16 +253,16 @@ async def collect_values(
         member_path = [1]
 
     values = {}
-    struct = types[primary_type]
 
-    for field_index, field in enumerate(struct):
-        field_name = field["name"]
-        field_type = field["data_type"]
-        member_value_path = member_path + [field_index]
+    type_members = types[primary_type].members
+    for member_index, member in enumerate(type_members):
+        field_name = member.name
+        field_type = member.type.data_type
+        member_value_path = member_path + [member_index]
 
         # Structs need to be handled recursively, arrays are also special
         if field_type == EthereumDataType.STRUCT:
-            struct_name = field["type_name"]
+            struct_name = member.type.struct_name
             values[field_name] = await collect_values(
                 ctx, struct_name, types, member_value_path
             )
@@ -289,78 +273,62 @@ async def collect_values(
             arr = []
             for i in range(array_size):
                 res = await request_member_value(ctx, member_value_path + [i])
-                validate_field(field["entry_type"], res.value)
+                validate_field(member.type.entry_type, field_name, res.value)
                 arr.append(res.value)
             values[field_name] = arr
         else:
             res = await request_member_value(ctx, member_value_path)
-            validate_field(field, res.value)
+            validate_field(member.type, field_name, res.value)
             values[field_name] = res.value
 
     return values
 
 
-def validate_field(field: dict, value: bytes) -> None:
+def validate_field(field: EthereumFieldType, field_name: str, value: bytes) -> None:
     """
     Makes sure the byte data we receive are not corrupted or incorrect
 
-    Raises wire.DataError if it encounters a problem, so it is
+    Raises wire.DataError if it encounters a problem, so clients are notified
     """
+    field_size = field.size
+    field_type = field.data_type
+
     # Checking if the size corresponds to what is defined in types,
     # and also setting our maximum supported size in bytes
-    field_size = field["size"]
-    field_type = field["data_type"]
-    type_name = field["type_name"]
     if field_size is not None:
         if len(value) != field_size:
-            raise wire.DataError(
-                "Value {} of type {} does not match its expected byte size of {}, its size is {}.".format(
-                    value, type_name, field_size, len(value)
-                )
-            )
+            raise wire.DataError("{}: invalid length".format(field_name))
     else:
         max_byte_size = 1024
         if len(value) > max_byte_size:
             raise wire.DataError(
-                "Value {} of type {} exceeds maximum supported byte size of {}, its size is {}.".format(
-                    value, type_name, max_byte_size, len(value)
-                )
+                "{}: invalid length, bigger than {}".format(field_name, max_byte_size)
             )
 
     # Specific tests for some data types
     if field_type == EthereumDataType.BOOL:
-        supported_options = [b"\x00", b"\x01"]
-        if value not in supported_options:
-            raise wire.DataError(
-                "Value {} of type bool is not supported. Possible options are {}.".format(
-                    value, supported_options
-                )
-            )
+        if value not in [b"\x00", b"\x01"]:
+            raise wire.DataError("{}: invalid boolean value".format(field_name))
     elif field_type == EthereumDataType.ADDRESS:
-        expected_length = 20
-        if len(value) != expected_length:
-            raise wire.DataError(
-                "Value {} of type address does not have expected byte length of {}, its size is {}.".format(
-                    value, expected_length, len(value)
-                )
-            )
+        if len(value) != 20:
+            raise wire.DataError("{}: invalid address".format(field_name))
     elif field_type == EthereumDataType.STRING:
         try:
             value.decode()
         except UnicodeError:
-            raise wire.DataError(
-                "Value {} of type string is not utf-8 encoded.".format(value)
-            )
+            raise wire.DataError("{}: invalid UTF-8".format(field_name))
 
 
-def hash_type(primary_type: str, types: dict) -> bytes:
+def hash_type(primary_type: str, types: Dict[str, EthereumTypedDataStructAck]) -> bytes:
     """
     Encodes and hashes a type using Keccak256
     """
     return keccak256(encode_type(primary_type, types))
 
 
-def encode_type(primary_type: str, types: dict) -> bytes:
+def encode_type(
+    primary_type: str, types: Dict[str, EthereumTypedDataStructAck]
+) -> bytes:
     """
     Encodes the type of an object by encoding a comma delimited list of its members
 
@@ -380,15 +348,17 @@ def encode_type(primary_type: str, types: dict) -> bytes:
     primary_first_sorted_deps = [primary_type] + sorted(non_primary_deps)
 
     for type_name in primary_first_sorted_deps:
-        children = types[type_name]
-        fields = ",".join(["%s %s" % (c["type_name"], c["name"]) for c in children])
+        members = types[type_name].members
+        fields = ",".join(["%s %s" % (get_type_name(m.type), m.name) for m in members])
         result += b"%s(%s)" % (type_name, fields)
 
     return result
 
 
 def find_typed_dependencies(
-    primary_type: str, types: dict, results: list = None
+    primary_type: str,
+    types: Dict[str, EthereumTypedDataStructAck],
+    results: list = None,
 ) -> list:
     """
     Finds all types within a type definition object
@@ -409,13 +379,12 @@ def find_typed_dependencies(
         return results
 
     results.append(primary_type)
+
     # Recursively adding all the children struct types
-    for field in types[primary_type]:
-        if field["data_type"] == EthereumDataType.STRUCT:
-            deps = find_typed_dependencies(field["type_name"], types, results)
-            for dep in deps:
-                if dep not in results:
-                    results.append(dep)
+    type_members = types[primary_type].members
+    for member in type_members:
+        if member.type.data_type == EthereumDataType.STRUCT:
+            results = find_typed_dependencies(member.type.struct_name, types, results)
 
     return results
 
