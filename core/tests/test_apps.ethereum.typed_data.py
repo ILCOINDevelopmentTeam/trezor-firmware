@@ -21,6 +21,7 @@ if not utils.BITCOIN_ONLY:
         keccak256,
         get_type_name,
         decode_data,
+        get_hash_writer,
     )
 
 DOMAIN_TYPES = {
@@ -409,13 +410,15 @@ class TestEthereumSignTypedData(unittest.TestCase):
             ),
         )
         for primary_type, data, types, expected in VECTORS:
-            res = encode_data(
+            w = get_hash_writer()
+            encode_data(
+                w=w,
                 primary_type=primary_type,
                 data=data,
                 types=types,
                 metamask_v4_compat=True,
             )
-            self.assertEqual(res, expected)
+            self.assertEqual(w.get_digest(), keccak256(expected))
 
     def test_encode_type(self):
         VECTORS = (  # primary_type, types, expected
@@ -464,8 +467,9 @@ class TestEthereumSignTypedData(unittest.TestCase):
         )
 
         for primary_type, expected in VECTORS:
-            res = hash_type(primary_type=primary_type, types=ALL_TYPES_BASIC)
-            self.assertEqual(res, expected)
+            w = get_hash_writer()
+            hash_type(w=w, primary_type=primary_type, types=ALL_TYPES_BASIC)
+            self.assertEqual(w.get_digest(), keccak256(expected))
 
     def test_find_typed_dependencies(self):
         VECTORS = (  # primary_type, expected
@@ -498,7 +502,6 @@ class TestEthereumSignTypedData(unittest.TestCase):
             self.assertEqual(res, expected)
 
     def test_encode_field(self):
-        # TODO: need to add a fake writer and check it really got written
         VECTORS = (  # field, value, expected
             (
                 EthereumFieldType(data_type=EthereumDataType.STRING, size=None),
@@ -565,14 +568,16 @@ class TestEthereumSignTypedData(unittest.TestCase):
             # metamask_v4_compat should not have any effect on the
             # result for items outside of arrays
             for metamask_v4_compat in [True, False]:
-                res = encode_field(
+                w = get_hash_writer()
+                encode_field(
+                    w=w,
                     field=field,
                     value=value,
                     types=MESSAGE_TYPES_BASIC,
                     in_array=False,
                     metamask_v4_compat=metamask_v4_compat,
                 )
-                self.assertEqual(res, expected)
+                self.assertEqual(w.get_digest(), keccak256(expected))
 
         # metamask_v4_compat makes a difference in arrays of structs when False
         field = EthereumFieldType(
@@ -584,14 +589,26 @@ class TestEthereumSignTypedData(unittest.TestCase):
         }
         expected_not_in_array = b"5'H\x1b_\xa5a5\x06\x04\xa6\rsOI\xee\x90\x7f\x17O[\xa6\xbby\x1a\xabAun\xce~\xd1"
         expected_in_array = b"(\xca\xc3\x18\xa8l\x8a\nj\x91V\xc2\xdb\xa2\xc8\xc266w\xba\x05\x14\xefae\x92\xd8\x15W\xe6y\xb6\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00T\xb0\xfaf\xa0et\x8c@\xdc\xa2\xc7\xfe\x12Z (\xcf\x99\x82"
-        res_not_in_array = encode_field(
-            field, value, MESSAGE_TYPES_BASIC, in_array=False, metamask_v4_compat=False
+        w_not_in_array = get_hash_writer()
+        w_in_array = get_hash_writer()
+        encode_field(
+            w=w_not_in_array,
+            field=field,
+            value=value,
+            types=MESSAGE_TYPES_BASIC,
+            in_array=False,
+            metamask_v4_compat=False,
         )
-        res_in_array = encode_field(
-            field, value, MESSAGE_TYPES_BASIC, in_array=True, metamask_v4_compat=False
+        encode_field(
+            w=w_in_array,
+            field=field,
+            value=value,
+            types=MESSAGE_TYPES_BASIC,
+            in_array=True,
+            metamask_v4_compat=False,
         )
-        self.assertEqual(res_not_in_array, expected_not_in_array)
-        self.assertEqual(res_in_array, expected_in_array)
+        self.assertEqual(w_not_in_array.get_digest(), keccak256(expected_not_in_array))
+        self.assertEqual(w_in_array.get_digest(), keccak256(expected_in_array))
 
     def test_validate_field(self):
         VECTORS_VALID_INVALID = (  # field, valid_values, invalid_values

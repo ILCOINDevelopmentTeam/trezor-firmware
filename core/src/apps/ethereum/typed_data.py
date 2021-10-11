@@ -14,8 +14,12 @@ from trezor.crypto.hashlib import sha3_256
 from .address import address_from_bytes
 
 
+def get_hash_writer() -> HashWriter:
+    return HashWriter(sha3_256(keccak=True))
+
+
 def keccak256(message: bytes) -> bytes:
-    h = HashWriter(sha3_256(keccak=True))
+    h = get_hash_writer()
     h.extend(message)
     return h.get_digest()
 
@@ -29,21 +33,19 @@ def hash_struct(
     """
     Encodes and hashes an object using Keccak256
     """
-    # TODO: create hashwriter object and pass it through other functions
-    # w: Writer
-    # w.append, w.extend methods
-    # return w.digest()
-    type_hash = hash_type(primary_type, types)
-    encoded_data = encode_data(primary_type, data, types, metamask_v4_compat)
-    return keccak256(type_hash + encoded_data)
+    w = get_hash_writer()
+    hash_type(w, primary_type, types)
+    encode_data(w, primary_type, data, types, metamask_v4_compat)
+    return w.get_digest()
 
 
 def encode_data(
+    w: HashWriter,
     primary_type: str,
     data: dict,
     types: Dict[str, EthereumTypedDataStructAck],
     metamask_v4_compat: bool = True,
-) -> bytes:
+) -> None:
     """
     Encodes an object by encoding and concatenating each of its members
 
@@ -56,29 +58,26 @@ def encode_data(
     data - Object to encode
     types - Type definitions
     """
-    result = b""
-
     type_members = types[primary_type].members
     for member in type_members:
-        encoded_value = encode_field(
+        encode_field(
+            w=w,
             field=member.type,
             value=data[member.name],
             types=types,
             in_array=False,
             metamask_v4_compat=metamask_v4_compat,
         )
-        result += encoded_value
-
-    return result
 
 
 def encode_field(
+    w: HashWriter,
     field: EthereumFieldType,
     value: bytes,
     types: Dict[str, EthereumTypedDataStructAck],
     in_array: bool,
     metamask_v4_compat: bool,
-) -> bytes:
+) -> None:
     """
     SPEC:
     Atomic types:
@@ -99,16 +98,17 @@ def encode_field(
 
     # Arrays and structs need special recursive handling
     if data_type == EthereumDataType.ARRAY:
-        buf = b""
+        arr_w = get_hash_writer()
         for element in value:
-            buf += encode_field(
+            encode_field(
+                w=arr_w,
                 field=field.entry_type,
                 value=element,
                 types=types,
                 in_array=True,
                 metamask_v4_compat=metamask_v4_compat,
             )
-        return keccak256(buf)
+        w.extend(arr_w.get_digest())
     elif data_type == EthereumDataType.STRUCT:
         # Metamask V4 implementation has a bug, that causes the
         # behavior of structs in array be different from SPEC
@@ -116,36 +116,39 @@ def encode_field(
         # encode_data() is the way to process structs in arrays, but
         # Metamask V4 is using hash_struct() even in this case
         if in_array and not metamask_v4_compat:
-            return encode_data(
+            encode_data(
+                w=w,
                 primary_type=field.struct_name,
                 data=value,
                 types=types,
                 metamask_v4_compat=metamask_v4_compat,
             )
         else:
-            return hash_struct(
-                primary_type=field.struct_name,
-                data=value,
-                types=types,
-                metamask_v4_compat=metamask_v4_compat,
+            w.extend(
+                hash_struct(
+                    primary_type=field.struct_name,
+                    data=value,
+                    types=types,
+                    metamask_v4_compat=metamask_v4_compat,
+                )
             )
     elif data_type == EthereumDataType.BYTES:
         # TODO: is not tested
         if field.size is None:
-            return keccak256(value)
+            w.extend(keccak256(value))
         else:
-            return rightpad32(value)
+            w.extend(rightpad32(value))
     elif data_type == EthereumDataType.STRING:
-        return keccak256(value)
+        w.extend((keccak256(value)))
     elif data_type in [
         EthereumDataType.UINT,
         EthereumDataType.INT,
         EthereumDataType.BOOL,
         EthereumDataType.ADDRESS,
     ]:
-        return leftpad32(value)
-
-    raise ValueError  # Unsupported data type for field encoding
+        w.extend(leftpad32(value))
+    else:
+        raise ValueError  # Unsupported data type for field encoding
 
 
 def leftpad32(value: bytes) -> bytes:
@@ -199,11 +202,12 @@ def validate_field(field: EthereumFieldType, field_name: str, value: bytes) -> N
             raise wire.DataError("{}: invalid UTF-8".format(field_name))
 
 
-def hash_type(primary_type: str, types: Dict[str, EthereumTypedDataStructAck]) -> bytes:
+def hash_type(w: HashWriter, primary_type: str, types: Dict[str, EthereumTypedDataStructAck]) -> None:
     """
     Encodes and hashes a type using Keccak256
     """
-    return keccak256(encode_type(primary_type, types))
+    result = keccak256(encode_type(primary_type, types))
+    w.extend(result)
 
 
 def encode_type(
