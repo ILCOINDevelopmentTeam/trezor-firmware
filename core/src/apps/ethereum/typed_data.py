@@ -24,7 +24,7 @@ def hash_struct(
     primary_type: str,
     data: dict,
     types: Dict[str, EthereumTypedDataStructAck],
-    use_v4: bool = True,
+    metamask_v4_compat: bool = True,
 ) -> bytes:
     """
     Encodes and hashes an object using Keccak256
@@ -34,7 +34,7 @@ def hash_struct(
     # w.append, w.extend methods
     # return w.digest()
     type_hash = hash_type(primary_type, types)
-    encoded_data = encode_data(primary_type, data, types, use_v4)
+    encoded_data = encode_data(primary_type, data, types, metamask_v4_compat)
     return keccak256(type_hash + encoded_data)
 
 
@@ -42,7 +42,7 @@ def encode_data(
     primary_type: str,
     data: dict,
     types: Dict[str, EthereumTypedDataStructAck],
-    use_v4: bool = True,
+    metamask_v4_compat: bool = True,
 ) -> bytes:
     """
     Encodes an object by encoding and concatenating each of its members
@@ -64,7 +64,8 @@ def encode_data(
             field=member.type,
             value=data[member.name],
             types=types,
-            use_v4=use_v4,
+            in_array=False,
+            metamask_v4_compat=metamask_v4_compat,
         )
         result += encoded_value
 
@@ -75,7 +76,8 @@ def encode_field(
     field: EthereumFieldType,
     value: bytes,
     types: Dict[str, EthereumTypedDataStructAck],
-    use_v4: bool = True,
+    in_array: bool,
+    metamask_v4_compat: bool,
 ) -> bytes:
     """
     SPEC:
@@ -103,16 +105,30 @@ def encode_field(
                 field=field.entry_type,
                 value=element,
                 types=types,
-                use_v4=use_v4,
+                in_array=True,
+                metamask_v4_compat=metamask_v4_compat,
             )
         return keccak256(buf)
     elif data_type == EthereumDataType.STRUCT:
-        return hash_struct(
-            primary_type=field.struct_name,
-            data=value,
-            types=types,
-            use_v4=use_v4,
-        )
+        # Metamask V4 implementation has a bug, that causes the
+        # behavior of structs in array be different from SPEC
+        # Explanation at https://github.com/MetaMask/eth-sig-util/pull/107
+        # encode_data() is the way to process structs in arrays, but
+        # Metamask V4 is using hash_struct() even in this case
+        if in_array and not metamask_v4_compat:
+            return encode_data(
+                primary_type=field.struct_name,
+                data=value,
+                types=types,
+                metamask_v4_compat=metamask_v4_compat,
+            )
+        else:
+            return hash_struct(
+                primary_type=field.struct_name,
+                data=value,
+                types=types,
+                metamask_v4_compat=metamask_v4_compat,
+            )
     elif data_type == EthereumDataType.BYTES:
         # TODO: is not tested
         if field.size is None:

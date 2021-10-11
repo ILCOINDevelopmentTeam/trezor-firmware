@@ -21,7 +21,6 @@ from trezorlib.tools import parse_path
 
 MNEMONIC = " ".join(["all"] * 12)
 PATH = "m/44'/60'/0'/0/0"
-USE_V4 = True
 
 EXPECTED_ADDRESS = "0x73d0385F4d8E00C5e6504C6030F47BF6212736A8"
 
@@ -193,6 +192,7 @@ CONTENT_LIST = """
 """
 
 EXPECTED_SIG_STRUCT_LIST = "0x61d4a929f8513b6327c5eae227d65c394c3857904de483a2191095e2ec35a9ea2ecaf1a461332a6f4847679018848612b35c94150d9be8870ffad01fcbe72cf71c"
+EXPECTED_SIG_STRUCT_LIST_NON_V4 = "0xba6658fd95d8f6048150c8ac64a596d974184522d1069237a57d0e170835fff661ff6f10c5049906a8a508c18d58145dcff91508e70e7e3c186193e3e3bb7dd61b"
 CONTENT_STRUCT_LIST = """
 {
     "types": {
@@ -267,18 +267,19 @@ CONTENT_STRUCT_LIST = """
 """
 
 
-VECTORS = (
-    (CONTENT_BASIC, EXPECTED_SIG_BASIC),
-    (CONTENT_LIST, EXPECTED_SIG_LIST),
-    (CONTENT_STRUCT_LIST, EXPECTED_SIG_STRUCT_LIST),
+VECTORS = (  # data_to_sign, expected_sig, metamask_v4_compat
+    (CONTENT_BASIC, EXPECTED_SIG_BASIC, True),
+    (CONTENT_LIST, EXPECTED_SIG_LIST, True),
+    (CONTENT_STRUCT_LIST, EXPECTED_SIG_STRUCT_LIST, True),
+    (CONTENT_STRUCT_LIST, EXPECTED_SIG_STRUCT_LIST_NON_V4, False),
 )
 
 
 @pytest.mark.setup_client(mnemonic=MNEMONIC)
 def test_ethereum_sign_typed_data(client):
-    for data_to_sign, expected_sig in VECTORS:
+    for data_to_sign, expected_sig, metamask_v4_compat in VECTORS:
         with client:
             address_n = parse_path(PATH)
-            ret = ethereum.sign_typed_data(client, address_n, USE_V4, data_to_sign)
+            ret = ethereum.sign_typed_data(client, address_n, metamask_v4_compat, data_to_sign)
             assert ret.address == EXPECTED_ADDRESS
             assert f"0x{ret.signature.hex()}" == expected_sig

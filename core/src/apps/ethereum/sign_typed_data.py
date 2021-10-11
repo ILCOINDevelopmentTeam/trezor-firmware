@@ -47,13 +47,13 @@ async def sign_typed_data(ctx, msg, keychain):
 
 
 async def generate_typed_data_hash(
-    ctx, primary_type: str, use_v4: bool = True
+    ctx, primary_type: str, metamask_v4_compat: bool = True
 ) -> bytes:
     """
     Generates typed data hash according to EIP-712 specification
     https://eips.ethereum.org/EIPS/eip-712#specification
 
-    use_v4 - a flag that enables compatibility with MetaMask's signTypedData_v4 method
+    metamask_v4_compat - a flag that enables compatibility with MetaMask's signTypedData_v4 method
     """
     domain_types = await collect_types(ctx, "EIP712Domain")
     message_types = await collect_types(ctx, primary_type)
@@ -74,9 +74,12 @@ async def generate_typed_data_hash(
             ctx, primary_type, message_types, message_values
         )
 
-    # TODO: the use_v4 variable is not used at all now, implement it
-    domain_separator = hash_struct("EIP712Domain", domain_values, domain_types, use_v4)
-    message_hash = hash_struct(primary_type, message_values, message_types, use_v4)
+    domain_separator = hash_struct(
+        "EIP712Domain", domain_values, domain_types, metamask_v4_compat
+    )
+    message_hash = hash_struct(
+        primary_type, message_values, message_types, metamask_v4_compat
+    )
 
     if not show_message:
         await require_confirm_typed_data_hash(ctx, primary_type, message_hash)
@@ -153,17 +156,13 @@ async def collect_values(
                     validate_field(
                         field=member.type.entry_type,
                         field_name=field_name,
-                        value=res.value
+                        value=res.value,
                     )
                     arr.append(res.value)
             values[field_name] = arr
         else:
             res = await request_member_value(ctx, member_value_path)
-            validate_field(
-                field=member.type,
-                field_name=field_name,
-                value=res.value
-            )
+            validate_field(field=member.type, field_name=field_name, value=res.value)
             values[field_name] = res.value
 
     return values

@@ -166,7 +166,9 @@ def encode_data(value: Any, type_name: str) -> bytes:
         return value.encode()
     elif type_name.startswith(("int", "uint")):
         byte_length = get_byte_size_for_int_type(type_name)
-        return int(value).to_bytes(byte_length, "big", signed=type_name.startswith("int"))
+        return int(value).to_bytes(
+            byte_length, "big", signed=type_name.startswith("int")
+        )
     elif type_name == "bool":
         if not isinstance(value, bool):
             raise ValueError(f"Invalid bool value - {value}")
@@ -288,7 +290,7 @@ def sign_message(client, n, message):
 
 
 @expect(messages.EthereumTypedDataSignature)
-def sign_typed_data(client, n: List[int], use_v4: bool, data_string: str):
+def sign_typed_data(client, n: List[int], metamask_v4_compat: bool, data_string: str):
     data = json.loads(data_string)
     data = sanitize_typed_data(data)
 
@@ -296,7 +298,9 @@ def sign_typed_data(client, n: List[int], use_v4: bool, data_string: str):
     message_types = get_relevant_types(data["primaryType"], data["types"])
 
     request = messages.EthereumSignTypedData(
-        address_n=n, primary_type=data["primaryType"], metamask_v4_compat=use_v4
+        address_n=n,
+        primary_type=data["primaryType"],
+        metamask_v4_compat=metamask_v4_compat,
     )
     response = client.call(request)
 

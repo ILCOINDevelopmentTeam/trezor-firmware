@@ -30,26 +30,26 @@ DOMAIN_TYPES = {
                 name="name",
                 type=EthereumFieldType(
                     data_type=EthereumDataType.STRING,
-                )
+                ),
             ),
             EthereumStructMember(
                 name="version",
                 type=EthereumFieldType(
                     data_type=EthereumDataType.STRING,
-                )
+                ),
             ),
             EthereumStructMember(
                 name="chainId",
                 type=EthereumFieldType(
                     size=32,
                     data_type=EthereumDataType.UINT,
-                )
+                ),
             ),
             EthereumStructMember(
                 name="verifyingContract",
                 type=EthereumFieldType(
                     data_type=EthereumDataType.ADDRESS,
-                )
+                ),
             ),
         ]
     )
@@ -63,7 +63,7 @@ MESSAGE_TYPES_BASIC = {
                     size=2,
                     data_type=EthereumDataType.STRUCT,
                     struct_name="Person",
-                )
+                ),
             ),
             EthereumStructMember(
                 name="to",
@@ -71,13 +71,13 @@ MESSAGE_TYPES_BASIC = {
                     size=2,
                     data_type=EthereumDataType.STRUCT,
                     struct_name="Person",
-                )
+                ),
             ),
             EthereumStructMember(
                 name="contents",
                 type=EthereumFieldType(
                     data_type=EthereumDataType.STRING,
-                )
+                ),
             ),
         ]
     ),
@@ -87,13 +87,13 @@ MESSAGE_TYPES_BASIC = {
                 name="name",
                 type=EthereumFieldType(
                     data_type=EthereumDataType.STRING,
-                )
+                ),
             ),
             EthereumStructMember(
                 name="wallet",
                 type=EthereumFieldType(
                     data_type=EthereumDataType.ADDRESS,
-                )
+                ),
             ),
         ]
     ),
@@ -136,7 +136,7 @@ MESSAGE_TYPES_LIST = {
                     size=6,
                     data_type=EthereumDataType.STRUCT,
                     struct_name="Person",
-                )
+                ),
             ),
             EthereumStructMember(
                 name="to",
@@ -144,7 +144,7 @@ MESSAGE_TYPES_LIST = {
                     size=6,
                     data_type=EthereumDataType.STRUCT,
                     struct_name="Person",
-                )
+                ),
             ),
             EthereumStructMember(
                 name="messages",
@@ -153,7 +153,7 @@ MESSAGE_TYPES_LIST = {
                     entry_type=EthereumFieldType(
                         data_type=EthereumDataType.STRING,
                     ),
-                )
+                ),
             ),
         ]
     ),
@@ -164,33 +164,33 @@ MESSAGE_TYPES_LIST = {
                 type=EthereumFieldType(
                     size=None,
                     data_type=EthereumDataType.STRING,
-                )
+                ),
             ),
             EthereumStructMember(
                 name="wallet",
                 type=EthereumFieldType(
                     data_type=EthereumDataType.ADDRESS,
-                )
+                ),
             ),
             EthereumStructMember(
                 name="married",
                 type=EthereumFieldType(
                     data_type=EthereumDataType.BOOL,
-                )
+                ),
             ),
             EthereumStructMember(
                 name="kids",
                 type=EthereumFieldType(
                     size=1,
                     data_type=EthereumDataType.UINT,
-                )
+                ),
             ),
             EthereumStructMember(
                 name="karma",
                 type=EthereumFieldType(
                     size=2,
                     data_type=EthereumDataType.INT,
-                )
+                ),
             ),
             EthereumStructMember(
                 name="pets",
@@ -199,7 +199,7 @@ MESSAGE_TYPES_LIST = {
                     entry_type=EthereumFieldType(
                         data_type=EthereumDataType.STRING,
                     ),
-                )
+                ),
             ),
         ]
     ),
@@ -242,6 +242,7 @@ MESSAGE_VALUES_LIST = {
 # should ignore extra unspecified message properties
 # should throw an error when an atomic property is set to null
 
+
 @unittest.skipUnless(not utils.BITCOIN_ONLY, "altcoin")
 class TestEthereumSignTypedData(unittest.TestCase):
     def test_hash_struct(self):
@@ -262,7 +263,7 @@ class TestEthereumSignTypedData(unittest.TestCase):
                     "version": b"1",
                     "chainId": b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01",
                     # 0xCcCCccccCCCCcCCCCCCcCcCccCcCCCcCcccccccC
-                    "verifyingContract": b"\xcc\xcc\xcc\xcc\xcc\xcc\xcc\xcc\xcc\xcc\xcc\xcc\xcc\xcc\xcc\xcc\xcc\xcc\xcc\xcc"
+                    "verifyingContract": b"\xcc\xcc\xcc\xcc\xcc\xcc\xcc\xcc\xcc\xcc\xcc\xcc\xcc\xcc\xcc\xcc\xcc\xcc\xcc\xcc",
                 },
                 DOMAIN_TYPES,
                 b"\xf2\xce\xe3u\xfaB\xb4!C\x80@%\xfcD\x9d\xea\xfdP\xcc\x03\x1c\xa2W\xe0\xb1\x94\xa6P\xa9\x12\t\x0f",
@@ -317,7 +318,7 @@ class TestEthereumSignTypedData(unittest.TestCase):
                                 name="name",
                                 type=EthereumFieldType(
                                     data_type=EthereumDataType.STRING,
-                                )
+                                ),
                             ),
                             EthereumStructMember(
                                 name="wallet",
@@ -326,7 +327,7 @@ class TestEthereumSignTypedData(unittest.TestCase):
                                     entry_type=EthereumFieldType(
                                         data_type=EthereumDataType.ADDRESS,
                                     ),
-                                )
+                                ),
                             ),
                         ]
                     ),
@@ -338,7 +339,7 @@ class TestEthereumSignTypedData(unittest.TestCase):
                                     size=2,
                                     data_type=EthereumDataType.STRUCT,
                                     struct_name="Person",
-                                )
+                                ),
                             ),
                             EthereumStructMember(
                                 name="to",
@@ -349,13 +350,13 @@ class TestEthereumSignTypedData(unittest.TestCase):
                                         data_type=EthereumDataType.STRUCT,
                                         struct_name="Person",
                                     ),
-                                )
+                                ),
                             ),
                             EthereumStructMember(
                                 name="contents",
                                 type=EthereumFieldType(
                                     data_type=EthereumDataType.STRING,
-                                )
+                                ),
                             ),
                         ]
                     ),
@@ -382,7 +383,7 @@ class TestEthereumSignTypedData(unittest.TestCase):
                 primary_type=primary_type,
                 data=data,
                 types=types,
-                use_v4=True,
+                metamask_v4_compat=True,
             )
             self.assertEqual(res, expected)
 
@@ -412,7 +413,7 @@ class TestEthereumSignTypedData(unittest.TestCase):
                 primary_type=primary_type,
                 data=data,
                 types=types,
-                use_v4=True,
+                metamask_v4_compat=True,
             )
             self.assertEqual(res, expected)
 
@@ -540,12 +541,18 @@ class TestEthereumSignTypedData(unittest.TestCase):
                 b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
             ),
             (
-                EthereumFieldType(data_type=EthereumDataType.ARRAY, size=None, entry_type=EthereumFieldType(data_type=EthereumDataType.STRING)),
+                EthereumFieldType(
+                    data_type=EthereumDataType.ARRAY,
+                    size=None,
+                    entry_type=EthereumFieldType(data_type=EthereumDataType.STRING),
+                ),
                 [b"String A", b"Second string", b"another Text"],
                 b"h\x0cn<\xe4\xc0}\x0by\xfa\x18\xa292\xd6@\x82\xd5\x82\x18\x9e;S\xe0\x1f\x19\xa9X3u\xbb\x8e",
             ),
             (
-                EthereumFieldType(data_type=EthereumDataType.STRUCT, size=2, struct_name="Person"),
+                EthereumFieldType(
+                    data_type=EthereumDataType.STRUCT, size=2, struct_name="Person"
+                ),
                 {
                     "name": b"Bob",
                     "wallet": b"T\xb0\xfaf\xa0et\x8c@\xdc\xa2\xc7\xfe\x12Z (\xcf\x99\x82",
@@ -555,10 +562,36 @@ class TestEthereumSignTypedData(unittest.TestCase):
         )
 
         for field, value, expected in VECTORS:
-            res = encode_field(
-                field=field, value=value, types=MESSAGE_TYPES_BASIC, use_v4=True
-            )
-            self.assertEqual(res, expected)
+            # metamask_v4_compat should not have any effect on the
+            # result for items outside of arrays
+            for metamask_v4_compat in [True, False]:
+                res = encode_field(
+                    field=field,
+                    value=value,
+                    types=MESSAGE_TYPES_BASIC,
+                    in_array=False,
+                    metamask_v4_compat=metamask_v4_compat,
+                )
+                self.assertEqual(res, expected)
+
+        # metamask_v4_compat makes a difference in arrays of structs when False
+        field = EthereumFieldType(
+            data_type=EthereumDataType.STRUCT, size=2, struct_name="Person"
+        )
+        value = {
+            "name": b"Bob",
+            "wallet": b"T\xb0\xfaf\xa0et\x8c@\xdc\xa2\xc7\xfe\x12Z (\xcf\x99\x82",
+        }
+        expected_not_in_array = b"5'H\x1b_\xa5a5\x06\x04\xa6\rsOI\xee\x90\x7f\x17O[\xa6\xbby\x1a\xabAun\xce~\xd1"
+        expected_in_array = b"(\xca\xc3\x18\xa8l\x8a\nj\x91V\xc2\xdb\xa2\xc8\xc266w\xba\x05\x14\xefae\x92\xd8\x15W\xe6y\xb6\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00T\xb0\xfaf\xa0et\x8c@\xdc\xa2\xc7\xfe\x12Z (\xcf\x99\x82"
+        res_not_in_array = encode_field(
+            field, value, MESSAGE_TYPES_BASIC, in_array=False, metamask_v4_compat=False
+        )
+        res_in_array = encode_field(
+            field, value, MESSAGE_TYPES_BASIC, in_array=True, metamask_v4_compat=False
+        )
+        self.assertEqual(res_not_in_array, expected_not_in_array)
+        self.assertEqual(res_in_array, expected_in_array)
 
     def test_validate_field(self):
         VECTORS_VALID_INVALID = (  # field, valid_values, invalid_values
@@ -591,27 +624,27 @@ class TestEthereumSignTypedData(unittest.TestCase):
 
         for field, valid_values, invalid_values in VECTORS_VALID_INVALID:
             for valid_value in valid_values:
-                validate_field(
-                    field=field,
-                    field_name="test",
-                    value=valid_value
-                )
+                validate_field(field=field, field_name="test", value=valid_value)
             for invalid_value in invalid_values:
                 with self.assertRaises(wire.DataError):
-                    validate_field(
-                        field=field,
-                        field_name="test",
-                        value=invalid_value
-                    )
+                    validate_field(field=field, field_name="test", value=invalid_value)
 
     def test_get_type_name(self):
         VECTORS = (  # field, expected
             (
-                EthereumFieldType(data_type=EthereumDataType.ARRAY, size=None, entry_type=EthereumFieldType(data_type=EthereumDataType.UINT, size=32)),
+                EthereumFieldType(
+                    data_type=EthereumDataType.ARRAY,
+                    size=None,
+                    entry_type=EthereumFieldType(
+                        data_type=EthereumDataType.UINT, size=32
+                    ),
+                ),
                 "uint256[]",
             ),
             (
-                EthereumFieldType(data_type=EthereumDataType.STRUCT, size=2, struct_name="Person"),
+                EthereumFieldType(
+                    data_type=EthereumDataType.STRUCT, size=2, struct_name="Person"
+                ),
                 "Person",
             ),
             (
@@ -650,51 +683,19 @@ class TestEthereumSignTypedData(unittest.TestCase):
 
     def test_decode_data(self):
         VECTORS = (  # data, type_name, expected
-            (
-                b"\x4a\x56",
-                "bytes",
-                "4a56"
-            ),
-            (
-                b"Hello, Bob!",
-                "string",
-                "Hello, Bob!"
-            ),
+            (b"\x4a\x56", "bytes", "4a56"),
+            (b"Hello, Bob!", "string", "Hello, Bob!"),
             (
                 b"\x1e\n\xe8 ^\x97&\xe6\xf2\x96\xab\x88i\x16\nd#\xe23~",
                 "address",
-                "0x1e0Ae8205e9726E6F296ab8869160A6423E2337E"
+                "0x1e0Ae8205e9726E6F296ab8869160A6423E2337E",
             ),
-            (
-                b"\x01",
-                "bool",
-                "true"
-            ),
-            (
-                b"\x00",
-                "bool",
-                "false"
-            ),
-            (
-                b"\x3f\x46\xaa",
-                "uint",
-                "4146858"
-            ),
-            (
-                b"\x3f\x46\xaa",
-                "int",
-                "4146858"
-            ),
-            (
-                b"\xff\xf1",
-                "uint",
-                "65521"
-            ),
-            (
-                b"\xff\xf1",
-                "int",
-                "-15"
-            ),
+            (b"\x01", "bool", "true"),
+            (b"\x00", "bool", "false"),
+            (b"\x3f\x46\xaa", "uint", "4146858"),
+            (b"\x3f\x46\xaa", "int", "4146858"),
+            (b"\xff\xf1", "uint", "65521"),
+            (b"\xff\xf1", "int", "-15"),
         )
 
         for data, type_name, expected in VECTORS:
