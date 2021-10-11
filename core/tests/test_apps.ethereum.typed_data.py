@@ -29,19 +29,13 @@ DOMAIN_TYPES = {
             EthereumStructMember(
                 name="name",
                 type=EthereumFieldType(
-                    size=None,
                     data_type=EthereumDataType.STRING,
-                    struct_name=None,
-                    entry_type=None,
                 )
             ),
             EthereumStructMember(
                 name="version",
                 type=EthereumFieldType(
-                    size=None,
                     data_type=EthereumDataType.STRING,
-                    struct_name=None,
-                    entry_type=None,
                 )
             ),
             EthereumStructMember(
@@ -49,17 +43,12 @@ DOMAIN_TYPES = {
                 type=EthereumFieldType(
                     size=32,
                     data_type=EthereumDataType.UINT,
-                    struct_name=None,
-                    entry_type=None,
                 )
             ),
             EthereumStructMember(
                 name="verifyingContract",
                 type=EthereumFieldType(
-                    size=None,
                     data_type=EthereumDataType.ADDRESS,
-                    struct_name=None,
-                    entry_type=None,
                 )
             ),
         ]
@@ -74,7 +63,6 @@ MESSAGE_TYPES_BASIC = {
                     size=2,
                     data_type=EthereumDataType.STRUCT,
                     struct_name="Person",
-                    entry_type=None,
                 )
             ),
             EthereumStructMember(
@@ -83,16 +71,12 @@ MESSAGE_TYPES_BASIC = {
                     size=2,
                     data_type=EthereumDataType.STRUCT,
                     struct_name="Person",
-                    entry_type=None,
                 )
             ),
             EthereumStructMember(
                 name="contents",
                 type=EthereumFieldType(
-                    size=None,
                     data_type=EthereumDataType.STRING,
-                    struct_name=None,
-                    entry_type=None,
                 )
             ),
         ]
@@ -102,19 +86,13 @@ MESSAGE_TYPES_BASIC = {
             EthereumStructMember(
                 name="name",
                 type=EthereumFieldType(
-                    size=None,
                     data_type=EthereumDataType.STRING,
-                    struct_name=None,
-                    entry_type=None,
                 )
             ),
             EthereumStructMember(
                 name="wallet",
                 type=EthereumFieldType(
-                    size=None,
                     data_type=EthereumDataType.ADDRESS,
-                    struct_name=None,
-                    entry_type=None,
                 )
             ),
         ]
@@ -158,7 +136,6 @@ MESSAGE_TYPES_LIST = {
                     size=6,
                     data_type=EthereumDataType.STRUCT,
                     struct_name="Person",
-                    entry_type=None,
                 )
             ),
             EthereumStructMember(
@@ -167,20 +144,14 @@ MESSAGE_TYPES_LIST = {
                     size=6,
                     data_type=EthereumDataType.STRUCT,
                     struct_name="Person",
-                    entry_type=None,
                 )
             ),
             EthereumStructMember(
                 name="messages",
                 type=EthereumFieldType(
-                    size=None,
                     data_type=EthereumDataType.ARRAY,
-                    struct_name=None,
                     entry_type=EthereumFieldType(
-                        size=None,
                         data_type=EthereumDataType.STRING,
-                        struct_name=None,
-                        entry_type=None,
                     ),
                 )
             ),
@@ -193,26 +164,18 @@ MESSAGE_TYPES_LIST = {
                 type=EthereumFieldType(
                     size=None,
                     data_type=EthereumDataType.STRING,
-                    struct_name=None,
-                    entry_type=None,
                 )
             ),
             EthereumStructMember(
                 name="wallet",
                 type=EthereumFieldType(
-                    size=None,
                     data_type=EthereumDataType.ADDRESS,
-                    struct_name=None,
-                    entry_type=None,
                 )
             ),
             EthereumStructMember(
                 name="married",
                 type=EthereumFieldType(
-                    size=None,
                     data_type=EthereumDataType.BOOL,
-                    struct_name=None,
-                    entry_type=None,
                 )
             ),
             EthereumStructMember(
@@ -220,8 +183,6 @@ MESSAGE_TYPES_LIST = {
                 type=EthereumFieldType(
                     size=1,
                     data_type=EthereumDataType.UINT,
-                    struct_name=None,
-                    entry_type=None,
                 )
             ),
             EthereumStructMember(
@@ -229,21 +190,14 @@ MESSAGE_TYPES_LIST = {
                 type=EthereumFieldType(
                     size=2,
                     data_type=EthereumDataType.INT,
-                    struct_name=None,
-                    entry_type=None,
                 )
             ),
             EthereumStructMember(
                 name="pets",
                 type=EthereumFieldType(
-                    size=None,
                     data_type=EthereumDataType.ARRAY,
-                    struct_name=None,
                     entry_type=EthereumFieldType(
-                        size=None,
                         data_type=EthereumDataType.STRING,
-                        struct_name=None,
-                        entry_type=None,
                     ),
                 )
             ),
@@ -285,7 +239,6 @@ MESSAGE_VALUES_LIST = {
 # https://github.com/MetaMask/eth-sig-util/blob/73ace3309bf4b97d901fb66cd61db15eede7afe9/src/sign-typed-data.test.ts
 # Worth testing/implementing:
 # should encode data with a recursive data type
-# should encode data with a custom data type array
 # should ignore extra unspecified message properties
 # should throw an error when an atomic property is set to null
 
@@ -332,6 +285,82 @@ class TestEthereumSignTypedData(unittest.TestCase):
                 },
                 MESSAGE_TYPES_BASIC,
                 b"\xc5,\x0e\xe5\xd8BdG\x18\x06)\n?,L\xec\xfcT\x90bk\xf9\x12\xd0\x1f$\rz'K7\x1e",
+            ),
+            (
+                # Taken from https://github.com/ethereum/EIPs/blob/master/assets/eip-712/Example.sol
+                "Mail",
+                {
+                    "from": {
+                        "name": b"Cow",
+                        # 0xCD2a3d9F938E13CD947Ec05AbC7FE734Df8DD826
+                        # 0xDD2a3d9F938E13CD947Ec05AbC7FE734Df8DD826
+                        "wallet": [
+                            b"\xcd*=\x9f\x93\x8e\x13\xcd\x94~\xc0Z\xbc\x7f\xe74\xdf\x8d\xd8&",
+                            b"\xdd*=\x9f\x93\x8e\x13\xcd\x94~\xc0Z\xbc\x7f\xe74\xdf\x8d\xd8&",
+                        ],
+                    },
+                    "to": [
+                        {
+                            "name": b"Bob",
+                            # 0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB
+                            "wallet": [
+                                b"\xbb\xbb\xbb\xbb\xbb\xbb\xbb\xbb\xbb\xbb\xbb\xbb\xbb\xbb\xbb\xbb\xbb\xbb\xbb\xbb"
+                            ],
+                        }
+                    ],
+                    "contents": b"Hello, Bob!",
+                },
+                {
+                    "Person": EthereumTypedDataStructAck(
+                        members=[
+                            EthereumStructMember(
+                                name="name",
+                                type=EthereumFieldType(
+                                    data_type=EthereumDataType.STRING,
+                                )
+                            ),
+                            EthereumStructMember(
+                                name="wallet",
+                                type=EthereumFieldType(
+                                    data_type=EthereumDataType.ARRAY,
+                                    entry_type=EthereumFieldType(
+                                        data_type=EthereumDataType.ADDRESS,
+                                    ),
+                                )
+                            ),
+                        ]
+                    ),
+                    "Mail": EthereumTypedDataStructAck(
+                        members=[
+                            EthereumStructMember(
+                                name="from",
+                                type=EthereumFieldType(
+                                    size=2,
+                                    data_type=EthereumDataType.STRUCT,
+                                    struct_name="Person",
+                                )
+                            ),
+                            EthereumStructMember(
+                                name="to",
+                                type=EthereumFieldType(
+                                    data_type=EthereumDataType.ARRAY,
+                                    entry_type=EthereumFieldType(
+                                        size=2,
+                                        data_type=EthereumDataType.STRUCT,
+                                        struct_name="Person",
+                                    ),
+                                )
+                            ),
+                            EthereumStructMember(
+                                name="contents",
+                                type=EthereumFieldType(
+                                    data_type=EthereumDataType.STRING,
+                                )
+                            ),
+                        ]
+                    ),
+                },
+                b"\xac&\xccz\xa2\xcb\x9a\x8aD_\xaeNH\xb3?\x97\x8bU\x8d\xa9\xb1n&8\x1cS\x81M3\x17\xf5A",
             ),
             (
                 # Generated by eth_account

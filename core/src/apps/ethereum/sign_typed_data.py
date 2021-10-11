@@ -134,18 +134,28 @@ async def collect_values(
                 ctx, struct_name, types, member_value_path
             )
         elif field_type == EthereumDataType.ARRAY:
-            # TODO: account for array of structs (and array of arrays)
+            # Getting the length of the array first
             res = await request_member_value(ctx, member_value_path)
             array_size = int.from_bytes(res.value, "big")
+            entry_type = member.type.entry_type.data_type
             arr = []
             for i in range(array_size):
-                res = await request_member_value(ctx, member_value_path + [i])
-                validate_field(
-                    field=member.type.entry_type,
-                    field_name=field_name,
-                    value=res.value
-                )
-                arr.append(res.value)
+                # Differentiating between structs and everything else
+                # (arrays of arrays are not supported)
+                if entry_type == EthereumDataType.STRUCT:
+                    struct_name = member.type.entry_type.struct_name
+                    struct_value = await collect_values(
+                        ctx, struct_name, types, member_value_path + [i]
+                    )
+                    arr.append(struct_value)
+                else:
+                    res = await request_member_value(ctx, member_value_path + [i])
+                    validate_field(
+                        field=member.type.entry_type,
+                        field_name=field_name,
+                        value=res.value
+                    )
+                    arr.append(res.value)
             values[field_name] = arr
         else:
             res = await request_member_value(ctx, member_value_path)

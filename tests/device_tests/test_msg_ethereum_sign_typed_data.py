@@ -192,10 +192,85 @@ CONTENT_LIST = """
 }
 """
 
+EXPECTED_SIG_STRUCT_LIST = "0x61d4a929f8513b6327c5eae227d65c394c3857904de483a2191095e2ec35a9ea2ecaf1a461332a6f4847679018848612b35c94150d9be8870ffad01fcbe72cf71c"
+CONTENT_STRUCT_LIST = """
+{
+    "types": {
+        "EIP712Domain": [
+            {
+                "name": "name",
+                "type": "string"
+            },
+            {
+                "name": "version",
+                "type": "string"
+            },
+            {
+                "name": "chainId",
+                "type": "uint256"
+            },
+            {
+                "name": "verifyingContract",
+                "type": "address"
+            }
+        ],
+        "Person": [
+            {
+                "name": "name",
+                "type": "string"
+            },
+            {
+                "name": "wallet",
+                "type": "address"
+            }
+        ],
+        "Mail": [
+            {
+                "name": "from",
+                "type": "Person"
+            },
+            {
+                "name": "to",
+                "type": "Person[]"
+            },
+            {
+                "name": "contents",
+                "type": "string"
+            }
+        ]
+    },
+    "primaryType": "Mail",
+    "domain": {
+        "name": "Ether Mail",
+        "version": "1",
+        "chainId": 1,
+        "verifyingContract": "0x1e0Ae8205e9726E6F296ab8869160A6423E2337E"
+    },
+    "message": {
+        "from": {
+            "name": "Cow",
+            "wallet": "0xc0004B62C5A39a728e4Af5bee0c6B4a4E54b15ad"
+        },
+        "to": [
+            {
+                "name": "Bob",
+                "wallet": "0x54B0Fa66A065748C40dCA2C7Fe125A2028CF9982"
+            },
+            {
+                "name": "Dave",
+                "wallet": "0x73d0385F4d8E00C5e6504C6030F47BF6212736A8"
+            }
+        ],
+        "contents": "Hello, guys!"
+    }
+}
+"""
+
 
 VECTORS = (
     (CONTENT_BASIC, EXPECTED_SIG_BASIC),
     (CONTENT_LIST, EXPECTED_SIG_LIST),
+    (CONTENT_STRUCT_LIST, EXPECTED_SIG_STRUCT_LIST),
 )
 
 

@@ -176,7 +176,7 @@ def encode_data(value: Any, type_name: str) -> bytes:
         return decode_hex(value)
 
     # We should be receiving only atomic, non-array types
-    raise ValueError("Unsupported data type for direct field encoding")
+    raise ValueError(f"Unsupported data type for direct field encoding: {type_name}")
 
 
 # ====== Client functions ====== #
@@ -333,7 +333,7 @@ def sign_typed_data(client, n: List[int], use_v4: bool, data_string: str):
             raise ValueError("unknown root")
 
         # It can be asking for a nested structure (the member path being [X, Y, Z, ...])
-        # TODO: account for array of structs
+        # TODO: what to do when the value is missing (for example in recursive types)?
         for index in response.member_path[1:]:
             if isinstance(member_data, dict):
                 member_def = member_types[member_typename][index]
@@ -346,7 +346,8 @@ def sign_typed_data(client, n: List[int], use_v4: bool, data_string: str):
         # If we were asked for a list, first sending its length and we will be receiving
         # requests for individual elements later
         if isinstance(member_data, list):
-            encoded_data = len(member_data).to_bytes(16, "big")
+            # Sending the length as uint16
+            encoded_data = len(member_data).to_bytes(2, "big")
         else:
             encoded_data = encode_data(member_data, member_typename)
 
