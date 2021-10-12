@@ -24,6 +24,7 @@ from .typed_data import (
     hash_struct,
     keccak256,
     validate_field,
+    validate_field_type,
 )
 
 
@@ -98,6 +99,7 @@ async def collect_types(
     current_type = await ctx.call(req, EthereumTypedDataStructAck)
     types[type_name] = current_type
     for member in current_type.members:
+        validate_field_type(member.type)
         if (
             member.type.data_type == EthereumDataType.STRUCT
             and member.type.struct_name not in types

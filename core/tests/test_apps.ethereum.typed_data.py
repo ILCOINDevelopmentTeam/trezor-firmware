@@ -1,12 +1,10 @@
 from common import *
 
 from trezor import wire
-from trezor.messages import (
-    EthereumTypedDataStructAck,
-    EthereumStructMember,
-    EthereumFieldType,
-)
-from trezor.enums import EthereumDataType
+from trezor.messages import EthereumTypedDataStructAck as ETDSA
+from trezor.messages import EthereumStructMember as ESM
+from trezor.messages import EthereumFieldType as EFT
+from trezor.enums import EthereumDataType as EDT
 
 
 if not utils.BITCOIN_ONLY:
@@ -17,6 +15,7 @@ if not utils.BITCOIN_ONLY:
         hash_type,
         encode_field,
         validate_field,
+        validate_field_type,
         find_typed_dependencies,
         keccak256,
         get_type_name,
@@ -24,73 +23,73 @@ if not utils.BITCOIN_ONLY:
     )
 
 TYPES_BASIC = {
-    "EIP712Domain": EthereumTypedDataStructAck(
+    "EIP712Domain": ETDSA(
         members=[
-            EthereumStructMember(
+            ESM(
                 name="name",
-                type=EthereumFieldType(
-                    data_type=EthereumDataType.STRING,
+                type=EFT(
+                    data_type=EDT.STRING,
                 ),
             ),
-            EthereumStructMember(
+            ESM(
                 name="version",
-                type=EthereumFieldType(
-                    data_type=EthereumDataType.STRING,
+                type=EFT(
+                    data_type=EDT.STRING,
                 ),
             ),
-            EthereumStructMember(
+            ESM(
                 name="chainId",
-                type=EthereumFieldType(
+                type=EFT(
                     size=32,
-                    data_type=EthereumDataType.UINT,
+                    data_type=EDT.UINT,
                 ),
             ),
-            EthereumStructMember(
+            ESM(
                 name="verifyingContract",
-                type=EthereumFieldType(
-                    data_type=EthereumDataType.ADDRESS,
+                type=EFT(
+                    data_type=EDT.ADDRESS,
                 ),
             ),
         ]
     ),
-    "Mail": EthereumTypedDataStructAck(
+    "Mail": ETDSA(
         members=[
-            EthereumStructMember(
+            ESM(
                 name="from",
-                type=EthereumFieldType(
+                type=EFT(
                     size=2,
-                    data_type=EthereumDataType.STRUCT,
+                    data_type=EDT.STRUCT,
                     struct_name="Person",
                 ),
             ),
-            EthereumStructMember(
+            ESM(
                 name="to",
-                type=EthereumFieldType(
+                type=EFT(
                     size=2,
-                    data_type=EthereumDataType.STRUCT,
+                    data_type=EDT.STRUCT,
                     struct_name="Person",
                 ),
             ),
-            EthereumStructMember(
+            ESM(
                 name="contents",
-                type=EthereumFieldType(
-                    data_type=EthereumDataType.STRING,
+                type=EFT(
+                    data_type=EDT.STRING,
                 ),
             ),
         ]
     ),
-    "Person": EthereumTypedDataStructAck(
+    "Person": ETDSA(
         members=[
-            EthereumStructMember(
+            ESM(
                 name="name",
-                type=EthereumFieldType(
-                    data_type=EthereumDataType.STRING,
+                type=EFT(
+                    data_type=EDT.STRING,
                 ),
             ),
-            EthereumStructMember(
+            ESM(
                 name="wallet",
-                type=EthereumFieldType(
-                    data_type=EthereumDataType.ADDRESS,
+                type=EFT(
+                    data_type=EDT.ADDRESS,
                 ),
             ),
         ]
@@ -120,105 +119,105 @@ MESSAGE_VALUES_BASIC = {
 }
 
 TYPES_LIST = {
-    "EIP712Domain": EthereumTypedDataStructAck(
+    "EIP712Domain": ETDSA(
         members=[
-            EthereumStructMember(
+            ESM(
                 name="name",
-                type=EthereumFieldType(
-                    data_type=EthereumDataType.STRING,
+                type=EFT(
+                    data_type=EDT.STRING,
                 ),
             ),
-            EthereumStructMember(
+            ESM(
                 name="version",
-                type=EthereumFieldType(
-                    data_type=EthereumDataType.STRING,
+                type=EFT(
+                    data_type=EDT.STRING,
                 ),
             ),
-            EthereumStructMember(
+            ESM(
                 name="chainId",
-                type=EthereumFieldType(
+                type=EFT(
                     size=32,
-                    data_type=EthereumDataType.UINT,
+                    data_type=EDT.UINT,
                 ),
             ),
-            EthereumStructMember(
+            ESM(
                 name="verifyingContract",
-                type=EthereumFieldType(
-                    data_type=EthereumDataType.ADDRESS,
+                type=EFT(
+                    data_type=EDT.ADDRESS,
                 ),
             ),
         ]
     ),
-    "Mail": EthereumTypedDataStructAck(
+    "Mail": ETDSA(
         members=[
-            EthereumStructMember(
+            ESM(
                 name="from",
-                type=EthereumFieldType(
+                type=EFT(
                     size=6,
-                    data_type=EthereumDataType.STRUCT,
+                    data_type=EDT.STRUCT,
                     struct_name="Person",
                 ),
             ),
-            EthereumStructMember(
+            ESM(
                 name="to",
-                type=EthereumFieldType(
+                type=EFT(
                     size=6,
-                    data_type=EthereumDataType.STRUCT,
+                    data_type=EDT.STRUCT,
                     struct_name="Person",
                 ),
             ),
-            EthereumStructMember(
+            ESM(
                 name="messages",
-                type=EthereumFieldType(
-                    data_type=EthereumDataType.ARRAY,
-                    entry_type=EthereumFieldType(
-                        data_type=EthereumDataType.STRING,
+                type=EFT(
+                    data_type=EDT.ARRAY,
+                    entry_type=EFT(
+                        data_type=EDT.STRING,
                     ),
                 ),
             ),
         ]
     ),
-    "Person": EthereumTypedDataStructAck(
+    "Person": ETDSA(
         members=[
-            EthereumStructMember(
+            ESM(
                 name="name",
-                type=EthereumFieldType(
+                type=EFT(
                     size=None,
-                    data_type=EthereumDataType.STRING,
+                    data_type=EDT.STRING,
                 ),
             ),
-            EthereumStructMember(
+            ESM(
                 name="wallet",
-                type=EthereumFieldType(
-                    data_type=EthereumDataType.ADDRESS,
+                type=EFT(
+                    data_type=EDT.ADDRESS,
                 ),
             ),
-            EthereumStructMember(
+            ESM(
                 name="married",
-                type=EthereumFieldType(
-                    data_type=EthereumDataType.BOOL,
+                type=EFT(
+                    data_type=EDT.BOOL,
                 ),
             ),
-            EthereumStructMember(
+            ESM(
                 name="kids",
-                type=EthereumFieldType(
+                type=EFT(
                     size=1,
-                    data_type=EthereumDataType.UINT,
+                    data_type=EDT.UINT,
                 ),
             ),
-            EthereumStructMember(
+            ESM(
                 name="karma",
-                type=EthereumFieldType(
+                type=EFT(
                     size=2,
-                    data_type=EthereumDataType.INT,
+                    data_type=EDT.INT,
                 ),
             ),
-            EthereumStructMember(
+            ESM(
                 name="pets",
-                type=EthereumFieldType(
-                    data_type=EthereumDataType.ARRAY,
-                    entry_type=EthereumFieldType(
-                        data_type=EthereumDataType.STRING,
+                type=EFT(
+                    data_type=EDT.ARRAY,
+                    entry_type=EFT(
+                        data_type=EDT.STRING,
                     ),
                 ),
             ),
@@ -328,50 +327,50 @@ class TestEthereumSignTypedData(unittest.TestCase):
                     "contents": b"Hello, Bob!",
                 },
                 {
-                    "Person": EthereumTypedDataStructAck(
+                    "Person": ETDSA(
                         members=[
-                            EthereumStructMember(
+                            ESM(
                                 name="name",
-                                type=EthereumFieldType(
-                                    data_type=EthereumDataType.STRING,
+                                type=EFT(
+                                    data_type=EDT.STRING,
                                 ),
                             ),
-                            EthereumStructMember(
+                            ESM(
                                 name="wallet",
-                                type=EthereumFieldType(
-                                    data_type=EthereumDataType.ARRAY,
-                                    entry_type=EthereumFieldType(
-                                        data_type=EthereumDataType.ADDRESS,
+                                type=EFT(
+                                    data_type=EDT.ARRAY,
+                                    entry_type=EFT(
+                                        data_type=EDT.ADDRESS,
                                     ),
                                 ),
                             ),
                         ]
                     ),
-                    "Mail": EthereumTypedDataStructAck(
+                    "Mail": ETDSA(
                         members=[
-                            EthereumStructMember(
+                            ESM(
                                 name="from",
-                                type=EthereumFieldType(
+                                type=EFT(
                                     size=2,
-                                    data_type=EthereumDataType.STRUCT,
+                                    data_type=EDT.STRUCT,
                                     struct_name="Person",
                                 ),
                             ),
-                            EthereumStructMember(
+                            ESM(
                                 name="to",
-                                type=EthereumFieldType(
-                                    data_type=EthereumDataType.ARRAY,
-                                    entry_type=EthereumFieldType(
+                                type=EFT(
+                                    data_type=EDT.ARRAY,
+                                    entry_type=EFT(
                                         size=2,
-                                        data_type=EthereumDataType.STRUCT,
+                                        data_type=EDT.STRUCT,
                                         struct_name="Person",
                                     ),
                                 ),
                             ),
-                            EthereumStructMember(
+                            ESM(
                                 name="contents",
-                                type=EthereumFieldType(
-                                    data_type=EthereumDataType.STRING,
+                                type=EFT(
+                                    data_type=EDT.STRING,
                                 ),
                             ),
                         ]
@@ -511,66 +510,62 @@ class TestEthereumSignTypedData(unittest.TestCase):
         )
 
         for primary_type, expected in VECTORS:
-            res = find_typed_dependencies(
-                primary_type=primary_type, types=TYPES_BASIC
-            )
+            res = find_typed_dependencies(primary_type=primary_type, types=TYPES_BASIC)
             self.assertEqual(res, expected)
 
     def test_encode_field(self):
         VECTORS = (  # field, value, expected
             (
-                EthereumFieldType(data_type=EthereumDataType.STRING, size=None),
+                EFT(data_type=EDT.STRING, size=None),
                 b"Ether Mail",
                 keccak256(b"Ether Mail"),
             ),
             (
-                EthereumFieldType(data_type=EthereumDataType.STRING, size=None),
+                EFT(data_type=EDT.STRING, size=None),
                 b"1",
                 keccak256(b"1"),
             ),
             (
-                EthereumFieldType(data_type=EthereumDataType.UINT, size=32),
+                EFT(data_type=EDT.UINT, size=32),
                 b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01",
                 b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01",
             ),
             (
-                EthereumFieldType(data_type=EthereumDataType.UINT, size=4),
+                EFT(data_type=EDT.UINT, size=4),
                 b"\x00\x00\x00\xde",
                 b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xde",
             ),
             (
-                EthereumFieldType(data_type=EthereumDataType.INT, size=1),
+                EFT(data_type=EDT.INT, size=1),
                 b"\x05",
                 b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x05",
             ),
             (
-                EthereumFieldType(data_type=EthereumDataType.ADDRESS, size=None),
+                EFT(data_type=EDT.ADDRESS, size=None),
                 b"\x1e\n\xe8 ^\x97&\xe6\xf2\x96\xab\x88i\x16\nd#\xe23~",
                 b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x1e\n\xe8 ^\x97&\xe6\xf2\x96\xab\x88i\x16\nd#\xe23~",
             ),
             (
-                EthereumFieldType(data_type=EthereumDataType.BOOL, size=None),
+                EFT(data_type=EDT.BOOL, size=None),
                 b"\x01",
                 b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01",
             ),
             (
-                EthereumFieldType(data_type=EthereumDataType.BOOL, size=None),
+                EFT(data_type=EDT.BOOL, size=None),
                 b"\x00",
                 b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
             ),
             (
-                EthereumFieldType(
-                    data_type=EthereumDataType.ARRAY,
+                EFT(
+                    data_type=EDT.ARRAY,
                     size=None,
-                    entry_type=EthereumFieldType(data_type=EthereumDataType.STRING),
+                    entry_type=EFT(data_type=EDT.STRING),
                 ),
                 [b"String A", b"Second string", b"another Text"],
                 b"h\x0cn<\xe4\xc0}\x0by\xfa\x18\xa292\xd6@\x82\xd5\x82\x18\x9e;S\xe0\x1f\x19\xa9X3u\xbb\x8e",
             ),
             (
-                EthereumFieldType(
-                    data_type=EthereumDataType.STRUCT, size=2, struct_name="Person"
-                ),
+                EFT(data_type=EDT.STRUCT, size=2, struct_name="Person"),
                 {
                     "name": b"Bob",
                     "wallet": b"T\xb0\xfaf\xa0et\x8c@\xdc\xa2\xc7\xfe\x12Z (\xcf\x99\x82",
@@ -595,9 +590,7 @@ class TestEthereumSignTypedData(unittest.TestCase):
                 self.assertEqual(w, expected)
 
         # metamask_v4_compat makes a difference in arrays of structs when False
-        field = EthereumFieldType(
-            data_type=EthereumDataType.STRUCT, size=2, struct_name="Person"
-        )
+        field = EFT(data_type=EDT.STRUCT, size=2, struct_name="Person")
         value = {
             "name": b"Bob",
             "wallet": b"T\xb0\xfaf\xa0et\x8c@\xdc\xa2\xc7\xfe\x12Z (\xcf\x99\x82",
@@ -628,27 +621,27 @@ class TestEthereumSignTypedData(unittest.TestCase):
     def test_validate_field(self):
         VECTORS_VALID_INVALID = (  # field, valid_values, invalid_values
             (
-                EthereumFieldType(data_type=EthereumDataType.UINT, size=1),
+                EFT(data_type=EDT.UINT, size=1),
                 [b"\xff"],
                 [b"\xff\xee"],
             ),
             (
-                EthereumFieldType(data_type=EthereumDataType.BYTES, size=8),
+                EFT(data_type=EDT.BYTES, size=8),
                 [b"\xff" * 8],
                 [b"\xff" * 7, b"\xff" * 9],
             ),
             (
-                EthereumFieldType(data_type=EthereumDataType.BOOL, size=None),
+                EFT(data_type=EDT.BOOL, size=None),
                 [b"\x00", b"\x01"],
                 [b"0", b"\x00\x01"],
             ),
             (
-                EthereumFieldType(data_type=EthereumDataType.STRING, size=None),
+                EFT(data_type=EDT.STRING, size=None),
                 [b"\x7f", b"a" * 1024],
                 [b"\x80", b"a" * 1025],
             ),
             (
-                EthereumFieldType(data_type=EthereumDataType.ADDRESS, size=None),
+                EFT(data_type=EDT.ADDRESS, size=None),
                 [b"T\xb0\xfaf\xa0et\x8c@\xdc\xa2\xc7\xfe\x12Z (\xcf\x99\x82"],
                 [b"T\xb0\xfaf\xa0et\x8c@\xdc\xa2\xc7\xfe\x12Z (\xcf\x99"],
             ),
@@ -661,60 +654,108 @@ class TestEthereumSignTypedData(unittest.TestCase):
                 with self.assertRaises(wire.DataError):
                     validate_field(field=field, field_name="test", value=invalid_value)
 
+    def test_validate_field_type(self):
+        ET = EFT(data_type=EDT.BYTES, size=8)
+        VECTORS_VALID = (  # valid_field
+            (EFT(data_type=EDT.STRUCT, struct_name="Person", size=3)),
+            (EFT(data_type=EDT.ARRAY, entry_type=ET, size=None)),
+            (EFT(data_type=EDT.ARRAY, entry_type=ET, size=6)),
+            (EFT(data_type=EDT.BYTES, size=32)),
+            (EFT(data_type=EDT.BYTES, size=None)),
+            (EFT(data_type=EDT.UINT, size=8)),
+            (EFT(data_type=EDT.INT, size=16)),
+            (EFT(data_type=EDT.STRING)),
+            (EFT(data_type=EDT.BOOL)),
+            (EFT(data_type=EDT.ADDRESS)),
+        )
+        for valid_field in VECTORS_VALID:
+            validate_field_type(field=valid_field)
+
+        ET = EFT(data_type=EDT.BYTES, size=8)
+        ET_INVALID = EFT(data_type=EDT.BYTES, size=33)
+        VECTORS_INVALID = (  # invalid_field
+            (EFT(data_type=EDT.STRUCT, size=None)),
+            (EFT(data_type=EDT.STRUCT, struct_name=None)),
+            (EFT(data_type=EDT.STRUCT, entry_type=ET)),
+            (EFT(data_type=EDT.ARRAY, struct_name="Person")),
+            (EFT(data_type=EDT.ARRAY, entry_type=None)),
+            (EFT(data_type=EDT.ARRAY, entry_type=ET_INVALID)),
+            (EFT(data_type=EDT.BYTES, struct_name="Person")),
+            (EFT(data_type=EDT.BYTES, size=0)),
+            (EFT(data_type=EDT.BYTES, size=33)),
+            (EFT(data_type=EDT.BYTES, entry_type=ET)),
+            (EFT(data_type=EDT.UINT, struct_name="Person")),
+            (EFT(data_type=EDT.UINT, size=None)),
+            (EFT(data_type=EDT.UINT, size=0)),
+            (EFT(data_type=EDT.UINT, size=33)),
+            (EFT(data_type=EDT.UINT, entry_type=ET)),
+            (EFT(data_type=EDT.INT, struct_name="Person")),
+            (EFT(data_type=EDT.INT, size=None)),
+            (EFT(data_type=EDT.INT, size=0)),
+            (EFT(data_type=EDT.INT, size=33)),
+            (EFT(data_type=EDT.INT, entry_type=ET)),
+            (EFT(data_type=EDT.STRING, struct_name="Person")),
+            (EFT(data_type=EDT.STRING, size=3)),
+            (EFT(data_type=EDT.STRING, entry_type=ET)),
+            (EFT(data_type=EDT.BOOL, struct_name="Person")),
+            (EFT(data_type=EDT.BOOL, size=3)),
+            (EFT(data_type=EDT.BOOL, entry_type=ET)),
+            (EFT(data_type=EDT.ADDRESS, struct_name="Person")),
+            (EFT(data_type=EDT.ADDRESS, size=3)),
+            (EFT(data_type=EDT.ADDRESS, entry_type=ET)),
+        )
+        for invalid_field in VECTORS_INVALID:
+            with self.assertRaises(wire.DataError):
+                validate_field_type(field=invalid_field)
+
     def test_get_type_name(self):
         VECTORS = (  # field, expected
             (
-                EthereumFieldType(
-                    data_type=EthereumDataType.ARRAY,
+                EFT(
+                    data_type=EDT.ARRAY,
                     size=None,
-                    entry_type=EthereumFieldType(
-                        data_type=EthereumDataType.UINT, size=32
-                    ),
+                    entry_type=EFT(data_type=EDT.UINT, size=32),
                 ),
                 "uint256[]",
             ),
             (
-                EthereumFieldType(
-                    data_type=EthereumDataType.ARRAY,
+                EFT(
+                    data_type=EDT.ARRAY,
                     size=4,
-                    entry_type=EthereumFieldType(
-                        data_type=EthereumDataType.STRING, size=None
-                    ),
+                    entry_type=EFT(data_type=EDT.STRING, size=None),
                 ),
                 "string[4]",
             ),
             (
-                EthereumFieldType(
-                    data_type=EthereumDataType.STRUCT, size=2, struct_name="Person"
-                ),
+                EFT(data_type=EDT.STRUCT, size=2, struct_name="Person"),
                 "Person",
             ),
             (
-                EthereumFieldType(data_type=EthereumDataType.STRING, size=None),
+                EFT(data_type=EDT.STRING, size=None),
                 "string",
             ),
             (
-                EthereumFieldType(data_type=EthereumDataType.ADDRESS, size=None),
+                EFT(data_type=EDT.ADDRESS, size=None),
                 "address",
             ),
             (
-                EthereumFieldType(data_type=EthereumDataType.BOOL, size=None),
+                EFT(data_type=EDT.BOOL, size=None),
                 "bool",
             ),
             (
-                EthereumFieldType(data_type=EthereumDataType.UINT, size=20),
+                EFT(data_type=EDT.UINT, size=20),
                 "uint160",
             ),
             (
-                EthereumFieldType(data_type=EthereumDataType.INT, size=8),
+                EFT(data_type=EDT.INT, size=8),
                 "int64",
             ),
             (
-                EthereumFieldType(data_type=EthereumDataType.BYTES, size=8),
+                EFT(data_type=EDT.BYTES, size=8),
                 "bytes8",
             ),
             (
-                EthereumFieldType(data_type=EthereumDataType.BYTES, size=None),
+                EFT(data_type=EDT.BYTES, size=None),
                 "bytes",
             ),
         )

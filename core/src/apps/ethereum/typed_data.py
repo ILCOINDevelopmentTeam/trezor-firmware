@@ -209,6 +209,55 @@ def validate_field(field: EthereumFieldType, field_name: str, value: bytes) -> N
             raise wire.DataError("{}: invalid UTF-8".format(field_name))
 
 
+def validate_field_type(field: EthereumFieldType) -> None:
+    """
+    Makes sure the field type is consistent with our expectation
+
+    Raises wire.DataError if it encounters a problem, so clients are notified
+    """
+    data_type = field.data_type
+
+    # entry_type is only for arrays
+    if data_type == EthereumDataType.ARRAY:
+        if field.entry_type is None:
+            raise wire.DataError("Missing entry_type in array EthereumFieldType")
+        # We also need to validate it recursively
+        validate_field_type(field.entry_type)
+    else:
+        if field.entry_type is not None:
+            raise wire.DataError("Redundant entry_type in nonarray EthereumFieldType")
+
+    # struct_name is only for structs
+    if data_type == EthereumDataType.STRUCT:
+        if field.struct_name is None:
+            raise wire.DataError("Missing struct_name in struct EthereumFieldType")
+    else:
+        if field.struct_name is not None:
+            raise wire.DataError("Redundant struct_name in nonstruct EthereumFieldType")
+
+    # size is special for each type
+    if data_type == EthereumDataType.STRUCT:
+        if field.size is None:
+            raise wire.DataError("Missing size in struct EthereumFieldType")
+    elif data_type == EthereumDataType.BYTES:
+        if field.size is not None:
+            if field.size not in range(1, 33):
+                raise wire.DataError("Invalid size in bytes EthereumFieldType")
+    elif data_type in [
+        EthereumDataType.UINT,
+        EthereumDataType.INT,
+    ]:
+        if field.size not in range(1, 33):
+            raise wire.DataError("Invalid size in int/uint EthereumFieldType")
+    elif data_type in [
+        EthereumDataType.STRING,
+        EthereumDataType.BOOL,
+        EthereumDataType.ADDRESS,
+    ]:
+        if field.size is not None:
+            raise wire.DataError("Redundant size in str/bool/addr EthereumFieldType")
+
+
 def hash_type(w: HashWriter, primary_type: str, types: Dict[str, EthereumTypedDataStructAck]) -> None:
     """
     Encodes and hashes a type using Keccak256
