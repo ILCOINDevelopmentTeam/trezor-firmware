@@ -33,7 +33,8 @@ enum SafetyCheckLevel {
  * @next Features
  */
 message Initialize {
-    optional bytes session_id = 1;           // assumed device session id; Trezor clears caches if it is different or empty
+    optional bytes session_id = 1;     // assumed device session id; Trezor clears caches if it is different or empty
+    optional bool derive_cardano = 2;  // whether to derive Cardano Icarus root keys in this session
 }
 
 /**

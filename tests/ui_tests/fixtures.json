@@ -795,6 +795,8 @@
 "test_sdcard.py::test_sd_protect_unlock": "bc654959615d17f6d8d6dda4625b4ecf7798a7d8c05ff438fc1546d0f8547432",
 "test_session.py::test_cannot_resume_ended_session": "c09de07fbbf1e047442180e2facb5482d06a1a428891b875b7dd93c9e4704ae1",
 "test_session.py::test_clear_session": "a749e7ff817a859da0670e7810d683909b9c4db415594098981183adb9c6be2e",
+"test_session.py::test_derive_cardano_empty_session": "c09de07fbbf1e047442180e2facb5482d06a1a428891b875b7dd93c9e4704ae1",
+"test_session.py::test_derive_cardano_running_session": "c09de07fbbf1e047442180e2facb5482d06a1a428891b875b7dd93c9e4704ae1",
 "test_session.py::test_end_session": "c09de07fbbf1e047442180e2facb5482d06a1a428891b875b7dd93c9e4704ae1",
 "test_session.py::test_end_session_only_current": "c09de07fbbf1e047442180e2facb5482d06a1a428891b875b7dd93c9e4704ae1",
 "test_session.py::test_session_recycling": "54fe7196c39e3f70734be72fc45a121670e891852354057b4d8ab094ced4b493",
