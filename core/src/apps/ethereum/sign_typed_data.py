@@ -55,30 +55,31 @@ async def generate_typed_data_hash(
 
     metamask_v4_compat - a flag that enables compatibility with MetaMask's signTypedData_v4 method
     """
-    domain_types = await collect_types(ctx, "EIP712Domain")
-    message_types = await collect_types(ctx, primary_type)
-    domain_values = await collect_values(ctx, "EIP712Domain", domain_types, [0])
-    message_values = await collect_values(ctx, primary_type, message_types)
+    types = {}
+    await collect_types(ctx, "EIP712Domain", types)
+    await collect_types(ctx, primary_type, types)
+    domain_values = await collect_values(ctx, "EIP712Domain", types, [0])
+    message_values = await collect_values(ctx, primary_type, types, [1])
 
     show_domain = await confirm_typed_domain_brief(ctx, domain_values)
     if show_domain:
         await require_confirm_typed_domain(
-            ctx, domain_types["EIP712Domain"], domain_values
+            ctx, types["EIP712Domain"], domain_values
         )
 
     show_message = await confirm_typed_data_brief(
-        ctx, primary_type, message_types[primary_type].members
+        ctx, primary_type, types[primary_type].members
     )
     if show_message:
         await require_confirm_typed_data(
-            ctx, primary_type, message_types, message_values
+            ctx, primary_type, types, message_values
         )
 
     domain_separator = hash_struct(
-        "EIP712Domain", domain_values, domain_types, metamask_v4_compat
+        "EIP712Domain", domain_values, types, metamask_v4_compat
     )
     message_hash = hash_struct(
-        primary_type, message_values, message_types, metamask_v4_compat
+        primary_type, message_values, types, metamask_v4_compat
     )
 
     if not show_message:
@@ -88,14 +89,11 @@ async def generate_typed_data_hash(
 
 
 async def collect_types(
-    ctx, type_name: str, types: Dict[str, EthereumTypedDataStructAck] = None
-) -> Dict[str, EthereumTypedDataStructAck]:
+    ctx, type_name: str, types: Dict[str, EthereumTypedDataStructAck]
+) -> None:
     """
     Recursively collects types from the client
     """
-    if types is None:
-        types = {}
-
     req = EthereumTypedDataStructRequest(name=type_name)
     current_type = await ctx.call(req, EthereumTypedDataStructAck)
     types[type_name] = current_type
@@ -104,24 +102,19 @@ async def collect_types(
             member.type.data_type == EthereumDataType.STRUCT
             and member.type.struct_name not in types
         ):
-            types = await collect_types(ctx, member.type.struct_name, types)
-
-    return types
+            await collect_types(ctx, member.type.struct_name, types)
 
 
 async def collect_values(
     ctx,
     primary_type: str,
     types: Dict[str, EthereumTypedDataStructAck],
-    member_path: list = None,
+    member_path: list,
 ) -> dict:
     """
     Collects data values from the client
     """
     # Member path starting with [0] means getting domain values, [1] is for message values
-    if member_path is None:
-        member_path = [1]
-
     values = {}
 
     type_members = types[primary_type].members

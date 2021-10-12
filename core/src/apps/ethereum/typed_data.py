@@ -137,34 +137,41 @@ def encode_field(
         if field.size is None:
             w.extend(keccak256(value))
         else:
-            w.extend(rightpad32(value))
+            write_rightpad32(value)
     elif data_type == EthereumDataType.STRING:
         w.extend((keccak256(value)))
+    elif data_type == EthereumDataType.INT:
+        write_leftpad32(w, value, signed=True)
     elif data_type in [
         EthereumDataType.UINT,
-        EthereumDataType.INT,
         EthereumDataType.BOOL,
         EthereumDataType.ADDRESS,
     ]:
-        w.extend(leftpad32(value))
+        write_leftpad32(w, value)
     else:
         raise ValueError  # Unsupported data type for field encoding
 
 
-def leftpad32(value: bytes) -> bytes:
-    if len(value) > 32:
-        raise ValueError  # Number is bigger than 32 bytes
+def write_leftpad32(w: HashWriter, value: bytes, signed: bool = False) -> None:
+    assert len(value) <= 32
+
+    # Values need to be sign-extended, so accounting for negative ints
+    if signed and value[0] & 0x80:
+        pad_value = b"\xff"
+    else:
+        pad_value = b"\x00"
 
     missing_bytes = 32 - len(value)
-    return missing_bytes * b"\x00" + value
+    to_write = missing_bytes * pad_value + value
+    w.extend(to_write)
 
 
-def rightpad32(value: bytes) -> bytes:
-    if len(value) > 32:
-        raise ValueError  # Number is bigger than 32 bytes
+def write_rightpad32(w: HashWriter, value: bytes) -> None:
+    assert len(value) <= 32
 
     missing_bytes = 32 - len(value)
-    return value + missing_bytes * b"\x00"
+    to_write = value + missing_bytes * b"\x00"
+    w.extend(to_write)
 
 
 def validate_field(field: EthereumFieldType, field_name: str, value: bytes) -> None:
@@ -291,7 +298,10 @@ def get_type_name(field: EthereumFieldType) -> str:
         return field.struct_name
     elif data_type == EthereumDataType.ARRAY:
         entry_type = field.entry_type
-        return get_type_name(entry_type) + "[]"
+        if size is None:
+            return get_type_name(entry_type) + "[]"
+        else:
+            return "{}[{}]".format(get_type_name(entry_type), size)
     elif data_type in [
         EthereumDataType.STRING,
         EthereumDataType.BOOL,
