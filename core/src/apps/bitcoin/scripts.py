@@ -128,13 +128,12 @@ def write_bip143_script_code_prefixed(
         write_output_script_multisig(w, public_keys, threshold, prefixed=True)
         return
 
-    p2pkh = (
-        txi.script_type == InputScriptType.SPENDWITNESS
-        or txi.script_type == InputScriptType.SPENDP2SHWITNESS
-        or txi.script_type == InputScriptType.SPENDADDRESS
-        or txi.script_type == InputScriptType.EXTERNAL
+    p2pkh = txi.script_type in (
+        InputScriptType.SPENDWITNESS,
+        InputScriptType.SPENDP2SHWITNESS,
+        InputScriptType.SPENDADDRESS,
+        InputScriptType.EXTERNAL,
     )
-
     if p2pkh:
         # for p2wpkh in p2sh or native p2wpkh
         # the scriptCode is a classic p2pkh
@@ -227,7 +226,7 @@ def output_script_native_p2wpkh_or_p2wsh(witprog: bytes) -> bytearray:
     # 00 14 <20-byte-key-hash>
     # 00 20 <32-byte-script-hash>
     length = len(witprog)
-    utils.ensure(length == 20 or length == 32)
+    utils.ensure(length in (20, 32))
 
     w = utils.empty_bytearray(3 + length)
     w.append(0x00)  # witness version byte
@@ -362,7 +361,7 @@ def parse_witness_multisig(
             raise ValueError
 
         signatures = []
-        for i in range(item_count - 2):
+        for _ in range(item_count - 2):
             n = read_bitcoin_varint(r)
             signature = r.read_memoryview(n - 1)
             hash_type = r.get()
@@ -497,7 +496,7 @@ def parse_output_script_multisig(script: bytes) -> tuple[list[memoryview], int]:
             raise ValueError
 
         public_keys = []
-        for i in range(pubkey_count):
+        for _ in range(pubkey_count):
             n = read_op_push(r)
             if n != 33:
                 raise ValueError
