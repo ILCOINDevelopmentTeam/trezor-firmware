@@ -1,9 +1,9 @@
 if False:
     from typing import Dict
+    from trezor.wire import Context
 
 from trezor.crypto.curve import secp256k1
-from trezor.messages import EthereumTypedDataValueAck
-from trezor.messages import EthereumTypedDataValueRequest
+from trezor.messages import EthereumSignTypedData
 from trezor.messages import EthereumTypedDataSignature
 from trezor.messages import EthereumTypedDataStructAck
 from trezor.messages import EthereumTypedDataStructRequest
@@ -13,23 +13,15 @@ from apps.common import paths
 
 from . import address
 from .keychain import PATTERNS_ADDRESS, with_keychain_from_path
-from .layout import (
-    confirm_typed_data_brief,
-    confirm_typed_domain_brief,
-    require_confirm_typed_data,
-    require_confirm_typed_data_hash,
-    require_confirm_typed_domain,
-)
 from .typed_data import (
     hash_struct,
     keccak256,
-    validate_field,
     validate_field_type,
 )
 
 
 @with_keychain_from_path(*PATTERNS_ADDRESS)
-async def sign_typed_data(ctx, msg, keychain):
+async def sign_typed_data(ctx: Context, msg: EthereumSignTypedData, keychain):
     data_hash = await generate_typed_data_hash(
         ctx, msg.primary_type, msg.metamask_v4_compat
     )
@@ -48,7 +40,7 @@ async def sign_typed_data(ctx, msg, keychain):
 
 
 async def generate_typed_data_hash(
-    ctx, primary_type: str, metamask_v4_compat: bool = True
+    ctx: Context, primary_type: str, metamask_v4_compat: bool = True
 ) -> bytes:
     """
     Generates typed data hash according to EIP-712 specification
@@ -59,38 +51,18 @@ async def generate_typed_data_hash(
     types = {}
     await collect_types(ctx, "EIP712Domain", types)
     await collect_types(ctx, primary_type, types)
-    domain_values = await collect_values(ctx, "EIP712Domain", types, [0])
-    message_values = await collect_values(ctx, primary_type, types, [1])
 
-    show_domain = await confirm_typed_domain_brief(ctx, domain_values)
-    if show_domain:
-        await require_confirm_typed_domain(
-            ctx, types["EIP712Domain"], domain_values
-        )
-
-    show_message = await confirm_typed_data_brief(
-        ctx, primary_type, types[primary_type].members
+    # Member path starting with [0] means getting domain values, [1] is for message values
+    domain_separator = await hash_struct(
+        ctx, "EIP712Domain", types, [0], metamask_v4_compat
     )
-    if show_message:
-        await require_confirm_typed_data(
-            ctx, primary_type, types, message_values
-        )
-
-    domain_separator = hash_struct(
-        "EIP712Domain", domain_values, types, metamask_v4_compat
-    )
-    message_hash = hash_struct(
-        primary_type, message_values, types, metamask_v4_compat
-    )
-
-    if not show_message:
-        await require_confirm_typed_data_hash(ctx, primary_type, message_hash)
+    message_hash = await hash_struct(ctx, primary_type, types, [1], metamask_v4_compat)
 
     return keccak256(b"\x19" + b"\x01" + domain_separator + message_hash)
 
 
 async def collect_types(
-    ctx, type_name: str, types: Dict[str, EthereumTypedDataStructAck]
+    ctx: Context, type_name: str, types: Dict[str, EthereumTypedDataStructAck]
 ) -> None:
     """
     Recursively collects types from the client
@@ -105,69 +77,3 @@ async def collect_types(
             and member.type.struct_name not in types
         ):
             await collect_types(ctx, member.type.struct_name, types)
-
-
-async def collect_values(
-    ctx,
-    primary_type: str,
-    types: Dict[str, EthereumTypedDataStructAck],
-    member_path: list,
-) -> dict:
-    """
-    Collects data values from the client
-    """
-    # Member path starting with [0] means getting domain values, [1] is for message values
-    values = {}
-
-    type_members = types[primary_type].members
-    for member_index, member in enumerate(type_members):
-        field_name = member.name
-        field_type = member.type.data_type
-        member_value_path = member_path + [member_index]
-
-        # Structs need to be handled recursively, arrays are also special
-        if field_type == EthereumDataType.STRUCT:
-            struct_name = member.type.struct_name
-            values[field_name] = await collect_values(
-                ctx, struct_name, types, member_value_path
-            )
-        elif field_type == EthereumDataType.ARRAY:
-            # Getting the length of the array first
-            res = await request_member_value(ctx, member_value_path)
-            array_size = int.from_bytes(res.value, "big")
-            entry_type = member.type.entry_type.data_type
-            arr = []
-            for i in range(array_size):
-                # Differentiating between structs and everything else
-                # (arrays of arrays are not supported)
-                if entry_type == EthereumDataType.STRUCT:
-                    struct_name = member.type.entry_type.struct_name
-                    struct_value = await collect_values(
-                        ctx, struct_name, types, member_value_path + [i]
-                    )
-                    arr.append(struct_value)
-                else:
-                    res = await request_member_value(ctx, member_value_path + [i])
-                    validate_field(
-                        field=member.type.entry_type,
-                        field_name=field_name,
-                        value=res.value,
-                    )
-                    arr.append(res.value)
-            values[field_name] = arr
-        else:
-            res = await request_member_value(ctx, member_value_path)
-            validate_field(field=member.type, field_name=field_name, value=res.value)
-            values[field_name] = res.value
-
-    return values
-
-
-async def request_member_value(ctx, member_path: list) -> EthereumTypedDataValueAck:
-    """
-    Requests a value of member at `member_path` from the client
-    """
-    req = EthereumTypedDataValueRequest(
-        member_path=member_path,
-    )
-    return await ctx.call(req, EthereumTypedDataValueAck)
