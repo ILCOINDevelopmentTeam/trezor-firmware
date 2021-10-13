@@ -18,6 +18,11 @@ from .typed_data import (
     keccak256,
     validate_field_type,
 )
+from .layout import (
+    should_we_show_domain,
+    should_we_show_message,
+    confirm_hash
+)
 
 
 @with_keychain_from_path(*PATTERNS_ADDRESS)
@@ -52,11 +57,31 @@ async def generate_typed_data_hash(
     await collect_types(ctx, "EIP712Domain", types)
     await collect_types(ctx, primary_type, types)
 
+    show_domain = await should_we_show_domain(ctx, types["EIP712Domain"].members)
+    show_message = await should_we_show_message(ctx, primary_type, types[primary_type].members)
+
     # Member path starting with [0] means getting domain values, [1] is for message values
     domain_separator = await hash_struct(
-        ctx, "EIP712Domain", types, [0], metamask_v4_compat
+        ctx=ctx,
+        primary_type="EIP712Domain",
+        types=types,
+        member_path=[0],
+        show_data=show_domain,
+        parent_objects=["EIP712"],
+        metamask_v4_compat=metamask_v4_compat
     )
-    message_hash = await hash_struct(ctx, primary_type, types, [1], metamask_v4_compat)
+    message_hash = await hash_struct(
+        ctx=ctx,
+        primary_type=primary_type,
+        types=types,
+        member_path=[1],
+        show_data=show_message,
+        parent_objects=["data"],
+        metamask_v4_compat=metamask_v4_compat
+    )
+
+    if not show_message:
+        await confirm_hash(ctx, primary_type, message_hash)
 
     return keccak256(b"\x19" + b"\x01" + domain_separator + message_hash)
 

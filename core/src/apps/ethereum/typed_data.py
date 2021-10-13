@@ -5,12 +5,16 @@ if False:
 from ubinascii import hexlify
 
 from trezor import wire
-from trezor.enums import EthereumDataType
+from trezor.enums import EthereumDataType, ButtonRequestType
 from trezor.messages import EthereumFieldType
 from trezor.messages import EthereumTypedDataStructAck
 from trezor.messages import EthereumTypedDataValueAck
 from trezor.messages import EthereumTypedDataValueRequest
 from trezor.messages import EthereumStructMember
+
+from trezor.ui.layouts import (
+    confirm_properties
+)
 
 
 from trezor.utils import HashWriter
@@ -34,6 +38,8 @@ async def hash_struct(
     primary_type: str,
     types: Dict[str, EthereumTypedDataStructAck],
     member_path: list,
+    show_data: bool,
+    parent_objects: list,
     metamask_v4_compat: bool = True,
 ) -> bytes:
     """
@@ -42,7 +48,14 @@ async def hash_struct(
     w = get_hash_writer()
     hash_type(w, primary_type, types)
     await get_and_encode_data(
-        ctx, w, primary_type, types, member_path, metamask_v4_compat
+        ctx=ctx,
+        w=w,
+        primary_type=primary_type,
+        types=types,
+        member_path=member_path,
+        show_data=show_data,
+        parent_objects=parent_objects,
+        metamask_v4_compat=metamask_v4_compat,
     )
     return w.get_digest()
 
@@ -53,6 +66,8 @@ async def get_and_encode_data(
     primary_type: str,
     types: Dict[str, EthereumTypedDataStructAck],
     member_path: list,
+    show_data: bool,
+    parent_objects: list,
     metamask_v4_compat: bool = True,
 ) -> None:
     """
@@ -76,7 +91,13 @@ async def get_and_encode_data(
         if data_type == EthereumDataType.STRUCT:
             struct_name = member.type.struct_name
             res = await hash_struct(
-                ctx, struct_name, types, member_value_path, metamask_v4_compat
+                ctx=ctx,
+                primary_type=struct_name,
+                types=types,
+                member_path=member_value_path,
+                show_data=show_data,
+                parent_objects=parent_objects + [member.name],
+                metamask_v4_compat=metamask_v4_compat,
             )
             w.extend(res)
         elif data_type == EthereumDataType.ARRAY:
@@ -101,6 +122,8 @@ async def get_and_encode_data(
                             primary_type=struct_name,
                             types=types,
                             member_path=el_member_path,
+                            show_data=show_data,
+                            parent_objects=parent_objects + [member.name],
                             metamask_v4_compat=metamask_v4_compat,
                         )
                         arr_w.extend(res)
@@ -111,15 +134,51 @@ async def get_and_encode_data(
                             primary_type=struct_name,
                             types=types,
                             member_path=el_member_path,
+                            show_data=show_data,
+                            parent_objects=parent_objects + [member.name],
                             metamask_v4_compat=metamask_v4_compat,
                         )
                 else:
                     value = await get_value(ctx, member, el_member_path)
-                    encode_field(arr_w, member.type.entry_type, value)
+                    encode_field(arr_w, entry_type, value)
+                    if show_data:
+                        title = ".".join(parent_objects) + " - " + primary_type
+                        type_name = get_type_name(entry_type)
+                        await show_data_to_user(ctx, member.name, value, title, type_name, i)
             w.extend(arr_w.get_digest())
         else:
             value = await get_value(ctx, member, member_value_path)
             encode_field(w, member.type, value)
+            if show_data:
+                title = ".".join(parent_objects) + " - " + primary_type
+                type_name = get_type_name(member.type)
+                await show_data_to_user(ctx, member.name, value, title, type_name)
+
+
+async def show_data_to_user(
+    ctx: Context,
+    name: str,
+    value: str,
+    title: str,
+    type_name: str,
+    array_index: int = None
+) -> None:
+    if array_index is not None:
+        array_str = "[{}]".format(array_index)
+    else:
+        array_str = ""
+
+    props = [
+        ("{}{} ({})".format(name, array_str, type_name), decode_data(value, type_name)),
+    ]
+
+    await confirm_properties(
+        ctx,
+        "show_data",
+        title=title,
+        props=props,
+        br_code=ButtonRequestType.Other,
+    )
 
 
 def encode_field(
