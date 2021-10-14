@@ -160,8 +160,8 @@ def get_field_type(type_name: str, types: dict) -> messages.EthereumFieldType:
 
 def encode_data(value: Any, type_name: str) -> bytes:
     if type_name.startswith("bytes"):
-        # TODO: find out what is the standard of sending bytes
-        return value.encode()
+        # TODO: make sure this is correct, seems like hex is working in MM
+        return decode_hex(value)
     elif type_name == "string":
         return value.encode()
     elif type_name.startswith(("int", "uint")):

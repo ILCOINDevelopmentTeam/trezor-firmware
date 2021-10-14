@@ -33,6 +33,9 @@ def keccak256(message: bytes) -> bytes:
     return h.get_digest()
 
 
+# TODO: consider creating a class to limit the variables being passed
+# from function to function
+# (at least ctx, types or metamask_v4_compat are the same everywhere)
 async def hash_struct(
     ctx: Context,
     primary_type: str,
@@ -86,6 +89,7 @@ async def get_and_encode_data(
     for member_index, member in enumerate(type_members):
         member_value_path = member_path + [member_index]
         data_type = member.type.data_type
+        field_name = member.name
 
         # Arrays and structs need special recursive handling
         if data_type == EthereumDataType.STRUCT:
@@ -96,14 +100,18 @@ async def get_and_encode_data(
                 types=types,
                 member_path=member_value_path,
                 show_data=show_data,
-                parent_objects=parent_objects + [member.name],
+                parent_objects=parent_objects + [field_name],
                 metamask_v4_compat=metamask_v4_compat,
             )
             w.extend(res)
         elif data_type == EthereumDataType.ARRAY:
-            # Getting the length of the array first
+            # Getting the length of the array first and validating it
             length_res = await request_member_value(ctx, member_value_path)
             array_size = int.from_bytes(length_res.value, "big")
+            if member.type.size is not None:
+                if array_size != member.type.size:
+                    raise wire.DataError("{} - invalid size for fixes-sized array".format(field_name))
+
             entry_type = member.type.entry_type
             arr_w = get_hash_writer()
             for i in range(array_size):
@@ -123,7 +131,7 @@ async def get_and_encode_data(
                             types=types,
                             member_path=el_member_path,
                             show_data=show_data,
-                            parent_objects=parent_objects + [member.name],
+                            parent_objects=parent_objects + [field_name],
                             metamask_v4_compat=metamask_v4_compat,
                         )
                         arr_w.extend(res)
@@ -135,7 +143,7 @@ async def get_and_encode_data(
                             types=types,
                             member_path=el_member_path,
                             show_data=show_data,
-                            parent_objects=parent_objects + [member.name],
+                            parent_objects=parent_objects + [field_name],
                             metamask_v4_compat=metamask_v4_compat,
                         )
                 else:
@@ -144,7 +152,7 @@ async def get_and_encode_data(
                     if show_data:
                         title = ".".join(parent_objects) + " - " + primary_type
                         type_name = get_type_name(entry_type)
-                        await show_data_to_user(ctx, member.name, value, title, type_name, i)
+                        await show_data_to_user(ctx, field_name, value, title, type_name, i)
             w.extend(arr_w.get_digest())
         else:
             value = await get_value(ctx, member, member_value_path)
@@ -152,7 +160,7 @@ async def get_and_encode_data(
             if show_data:
                 title = ".".join(parent_objects) + " - " + primary_type
                 type_name = get_type_name(member.type)
-                await show_data_to_user(ctx, member.name, value, title, type_name)
+                await show_data_to_user(ctx, field_name, value, title, type_name)
 
 
 async def show_data_to_user(
@@ -205,11 +213,10 @@ def encode_field(
     data_type = field.data_type
 
     if data_type == EthereumDataType.BYTES:
-        # TODO: is not tested
         if field.size is None:
             w.extend(keccak256(value))
         else:
-            write_rightpad32(value)
+            write_rightpad32(w, value)
     elif data_type == EthereumDataType.STRING:
         w.extend((keccak256(value)))
     elif data_type == EthereumDataType.INT:
@@ -439,7 +446,7 @@ def get_type_name(field: EthereumFieldType) -> str:
 
 
 def decode_data(data: bytes, type_name: str) -> str:
-    if type_name == "bytes":
+    if type_name.startswith("bytes"):
         return hexlify(data).decode()
     elif type_name == "string":
         return data.decode()
@@ -476,9 +483,15 @@ async def get_value(
     """
     Gets a single value from the client
     """
-    field_name = member.name
     res = await request_member_value(ctx, member_value_path)
-    validate_field(field=member.type, field_name=field_name, value=res.value)
+
+    # In case of being in array, validating against its entry type
+    if member.type.data_type == EthereumDataType.ARRAY:
+        field = member.type.entry_type
+    else:
+        field = member.type
+
+    validate_field(field=field, field_name=member.name, value=res.value)
     return res.value
 
 

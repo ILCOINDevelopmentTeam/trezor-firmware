@@ -94,6 +94,8 @@ TYPES_BASIC = {
     ),
 }
 
+# TODO: these are currently not used, because of deleted hash_struct and encode_data unit tests
+# Try to mock the request_member_value(), load it with these dicts and make it return the correct value
 DOMAIN_VALUES = {
     # 0x1e0Ae8205e9726E6F296ab8869160A6423E2337E
     "verifyingContract": b"\x1e\n\xe8 ^\x97&\xe6\xf2\x96\xab\x88i\x16\nd#\xe23~",
@@ -254,7 +256,7 @@ MESSAGE_VALUES_LIST = {
 # should encode data with a recursive data type
 # should ignore extra unspecified message properties
 # should throw an error when an atomic property is set to null
-
+# Missing custom type properties are omitted in V3, but encoded as 0 (bytes32) in V4
 
 @unittest.skipUnless(not utils.BITCOIN_ONLY, "altcoin")
 class TestEthereumSignTypedData(unittest.TestCase):

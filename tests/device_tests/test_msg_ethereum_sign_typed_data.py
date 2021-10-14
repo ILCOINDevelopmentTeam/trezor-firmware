@@ -94,8 +94,8 @@ CONTENT_BASIC = """
 """
 
 # Verified by Metamask's eth_signTypedData_v4
-EXPECTED_SIG_LIST = "0xb0697b0e9dbd596b3f17604193ab749ed2111f6d57ed16ac015349a0340c58be1edf788408ccb7abbd27884c239c675fb043d3e10fa83b449a0bc94879d81ce61b"
-CONTENT_LIST = """
+EXPECTED_SIG_COMPLEX = "0xf0a187388b33f17885c915173f38bd613d2ce4346acadfc390b2bae4c6def03667ceac155b5398bd8be326386e841e8820c5254f389a09d6d95ac72e2f6e19e61c"
+CONTENT_COMPLEX = """
 {
     "types": {
         "EIP712Domain": [
@@ -114,6 +114,10 @@ CONTENT_LIST = """
             {
                 "name": "verifyingContract",
                 "type": "address"
+            },
+            {
+                "name": "salt",
+                "type": "bytes32"
             }
         ],
         "Person": [
@@ -138,8 +142,20 @@ CONTENT_LIST = """
                 "type": "int16"
             },
             {
+                "name": "secret",
+                "type": "bytes"
+            },
+            {
+                "name": "small_secret",
+                "type": "bytes16"
+            },
+            {
                 "name": "pets",
                 "type": "string[]"
+            },
+            {
+                "name": "two_best_friends",
+                "type": "string[2]"
             }
         ],
         "Mail": [
@@ -162,7 +178,8 @@ CONTENT_LIST = """
         "name": "Ether Mail",
         "version": "1",
         "chainId": 1,
-        "verifyingContract": "0x1e0Ae8205e9726E6F296ab8869160A6423E2337E"
+        "verifyingContract": "0x1e0Ae8205e9726E6F296ab8869160A6423E2337E",
+        "salt": "0xca92da1a6e91d9358328d2f2155af143a7cb74b81a3a4e3e57e2191823dbb56c"
     },
     "message": {
         "from": {
@@ -171,7 +188,15 @@ CONTENT_LIST = """
             "married": true,
             "kids": 2,
             "karma": 4,
-            "pets": ["parrot"]
+            "secret": "0x62c5a39a728e4af5bee0c6b462c5a39a728e4af5bee0c6b462c5a39a728e4af5bee0c6b462c5a39a728e4af5bee0c6b4",
+            "small_secret": "0x5ccf0e54367104795a47bc0481645d9e",
+            "pets": [
+                "parrot"
+            ],
+            "two_best_friends": [
+                "Carl",
+                "Denis"
+            ]
         },
         "to": {
             "name": "Bob",
@@ -179,9 +204,15 @@ CONTENT_LIST = """
             "married": false,
             "kids": 0,
             "karma": -4,
+            "secret": "0x7fe125a2028cf97fe125a2028cf97fe125a2028cf97fe125a2028cf97fe125a2028cf97fe125a2028cf97fe125a2028cf9",
+            "small_secret": "0xa5e5c47b64775abc476d2962403258de",
             "pets": [
                 "dog",
                 "cat"
+            ],
+            "two_best_friends": [
+                "Emil",
+                "Franz"
             ]
         },
         "messages": [
@@ -269,10 +300,10 @@ CONTENT_STRUCT_LIST = """
 }
 """
 
-
+# TODO: could create JSON fixtures from it
 VECTORS = (  # data_to_sign, expected_sig, metamask_v4_compat
     (CONTENT_BASIC, EXPECTED_SIG_BASIC, True),
-    (CONTENT_LIST, EXPECTED_SIG_LIST, True),
+    (CONTENT_COMPLEX, EXPECTED_SIG_COMPLEX, True),
     (CONTENT_STRUCT_LIST, EXPECTED_SIG_STRUCT_LIST, True),
     (CONTENT_STRUCT_LIST, EXPECTED_SIG_STRUCT_LIST_NON_V4, False),
 )
