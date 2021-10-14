@@ -45,8 +45,8 @@ async def should_we_show_domain(ctx: Context, domain_members: List[EthereumStruc
     domain_name = decode_data(name, "string")
     domain_version = decode_data(version, "string")
 
-    page.bold("Name: {}".format(domain_name))
-    page.normal("Version: {}".format(domain_version))
+    page.bold(f"Name: {domain_name}")
+    page.normal(f"Version: {domain_version}")
     page.br()
     page.mono("View EIP712Domain?")
 
@@ -64,7 +64,7 @@ async def should_we_show_message(
     if fields_amount > MAX_FIELDS_TO_SHOW:
         for field in data_members[:MAX_FIELDS_TO_SHOW]:
             page.bold(limit_str(field.name))
-        page.mono("...and {} more.".format(fields_amount - MAX_FIELDS_TO_SHOW))
+        page.mono(f"...and {fields_amount - MAX_FIELDS_TO_SHOW} more.")
     else:
         for field in data_members:
             page.bold(limit_str(field.name))

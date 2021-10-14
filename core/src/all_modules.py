@@ -526,6 +526,8 @@ if not utils.BITCOIN_ONLY:
     import apps.ethereum.sign_typed_data
     apps.ethereum.tokens
     import apps.ethereum.tokens
+    apps.ethereum.typed_data
+    import apps.ethereum.typed_data
     apps.ethereum.verify_message
     import apps.ethereum.verify_message
     apps.monero

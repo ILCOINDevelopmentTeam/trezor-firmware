@@ -110,7 +110,7 @@ async def get_and_encode_data(
             array_size = int.from_bytes(length_res.value, "big")
             if member.type.size is not None:
                 if array_size != member.type.size:
-                    raise wire.DataError("{} - invalid size for fixes-sized array".format(field_name))
+                    raise wire.DataError(f"{field_name} - invalid size for fixes-sized array")
 
             entry_type = member.type.entry_type
             arr_w = get_hash_writer()
@@ -172,12 +172,12 @@ async def show_data_to_user(
     array_index: int = None
 ) -> None:
     if array_index is not None:
-        array_str = "[{}]".format(array_index)
+        array_str = f"[{array_index}]"
     else:
         array_str = ""
 
     props = [
-        ("{}{} ({})".format(name, array_str, type_name), decode_data(value, type_name)),
+        (f"{name}{array_str} ({type_name})", decode_data(value, type_name)),
     ]
 
     await confirm_properties(
@@ -266,26 +266,26 @@ def validate_field(field: EthereumFieldType, field_name: str, value: bytes) -> N
     # and also setting our maximum supported size in bytes
     if field_size is not None:
         if len(value) != field_size:
-            raise wire.DataError("{}: invalid length".format(field_name))
+            raise wire.DataError(f"{field_name}: invalid length")
     else:
         max_byte_size = 1024
         if len(value) > max_byte_size:
             raise wire.DataError(
-                "{}: invalid length, bigger than {}".format(field_name, max_byte_size)
+                f"{field_name}: invalid length, bigger than {max_byte_size}"
             )
 
     # Specific tests for some data types
     if field_type == EthereumDataType.BOOL:
         if value not in [b"\x00", b"\x01"]:
-            raise wire.DataError("{}: invalid boolean value".format(field_name))
+            raise wire.DataError(f"{field_name}: invalid boolean value")
     elif field_type == EthereumDataType.ADDRESS:
         if len(value) != 20:
-            raise wire.DataError("{}: invalid address".format(field_name))
+            raise wire.DataError(f"{field_name}: invalid address")
     elif field_type == EthereumDataType.STRING:
         try:
             value.decode()
         except UnicodeError:
-            raise wire.DataError("{}: invalid UTF-8".format(field_name))
+            raise wire.DataError(f"{field_name}: invalid UTF-8")
 
 
 def validate_field_type(field: EthereumFieldType) -> None:
@@ -424,10 +424,11 @@ def get_type_name(field: EthereumFieldType) -> str:
         return field.struct_name
     elif data_type == EthereumDataType.ARRAY:
         entry_type = field.entry_type
+        type_name = get_type_name(entry_type)
         if size is None:
-            return get_type_name(entry_type) + "[]"
+            return f"{type_name}[]"
         else:
-            return "{}[{}]".format(get_type_name(entry_type), size)
+            return f"{type_name}[{size}]"
     elif data_type in [
         EthereumDataType.STRING,
         EthereumDataType.BOOL,
