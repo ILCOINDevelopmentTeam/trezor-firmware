@@ -80,6 +80,7 @@ SRCS  += hmac_drbg.c
 SRCS  += rfc6979.c
 SRCS  += slip39.c
 SRCS  += schnorr.c
+SRCS  += cardano.c
 
 OBJS   = $(SRCS:.c=.o)
 
