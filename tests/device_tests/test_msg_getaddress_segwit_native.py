@@ -62,6 +62,13 @@ VECTORS = (  # coin, path, script_type, address
 )
 
 
+BIP86_VECTORS = (  # coin, path, script_type, address
+    ("86'/0'/0'/0/0", "bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr"),
+    ("86'/0'/0'/0/1", "bc1p4qhjn9zdvkux4e44uhx8tc55attvtyu358kutcqkudyccelu0was9fqzwh"),
+    ("86'/0'/0'/1/0", "bc1p3qkhfews2uk44qtvauqyr2ttdsw7svhkl9nkm9s9c3x4ax5h60wqwruhk7"),
+)
+
+
 @pytest.mark.parametrize("show_display", (True, False))
 @pytest.mark.parametrize("coin, path, script_type, address", VECTORS)
 def test_show_segwit(client, show_display, coin, path, script_type, address):
@@ -73,6 +80,24 @@ def test_show_segwit(client, show_display, coin, path, script_type, address):
             show_display,
             None,
             script_type=script_type,
+        )
+        == address
+    )
+
+
+@pytest.mark.setup_client(
+    mnemonic="abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+)
+@pytest.mark.parametrize("path, address", BIP86_VECTORS)
+def test_bip86(client, path, address):
+    assert (
+        btc.get_address(
+            client,
+            "Bitcoin",
+            parse_path(path),
+            False,
+            None,
+            script_type=proto.InputScriptType.SPENDTAPROOT,
         )
         == address
     )
