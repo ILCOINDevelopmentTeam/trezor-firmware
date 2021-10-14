@@ -256,6 +256,46 @@ STATIC mp_obj_t mod_trezorcrypto_secp256k1_multiply(mp_obj_t secret_key,
 STATIC MP_DEFINE_CONST_FUN_OBJ_2(mod_trezorcrypto_secp256k1_multiply_obj,
                                  mod_trezorcrypto_secp256k1_multiply);
 
+/// def tweak_pubkey(public_key: bytes, tweak: bytes) -> bytes:
+///     """
+///     Tweaks a 33-byte public key by computing public_key + tweak*G as
+///     specified in BIP-341.
+///     """
+STATIC mp_obj_t mod_trezorcrypto_secp256k1_tweak_pubkey(mp_obj_t public_key,
+                                                        mp_obj_t tweak) {
+  mp_buffer_info_t pki = {0}, twk = {0};
+  mp_get_buffer_raise(public_key, &pki, MP_BUFFER_READ);
+  mp_get_buffer_raise(tweak, &twk, MP_BUFFER_READ);
+  if (pki.len != 33) {
+    mp_raise_ValueError("Invalid length of public key");
+  }
+
+  if (twk.len != 32) {
+    mp_raise_ValueError("Invalid length of tweak");
+  }
+
+  curve_point P = {0};
+  if ((((const uint8_t *)pki.buf)[0] & 0x02) != 0x02 ||
+      !ecdsa_read_pubkey(&secp256k1, (const uint8_t *)pki.buf, &P)) {
+    mp_raise_ValueError("Invalid public key");
+  }
+
+  bignum256 t = {0};
+  curve_point T = {0};
+  bn_read_be(twk.buf, &t);
+  scalar_multiply(&secp256k1, &t, &T);
+
+  point_add(&secp256k1, &T, &P);
+
+  vstr_t pko = {0};
+  vstr_init_len(&pko, 33);
+  ((uint8_t *)pko.buf)[0] = 0x02 | (P.y.val[0] & 0x01);
+  bn_write_be(&P.x, (uint8_t *)pko.buf + 1);
+  return mp_obj_new_str_from_vstr(&mp_type_bytes, &pko);
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_2(mod_trezorcrypto_secp256k1_tweak_pubkey_obj,
+                                 mod_trezorcrypto_secp256k1_tweak_pubkey);
+
 STATIC const mp_rom_map_elem_t mod_trezorcrypto_secp256k1_globals_table[] = {
     {MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_secp256k1)},
     {MP_ROM_QSTR(MP_QSTR_generate_secret),
@@ -270,6 +310,8 @@ STATIC const mp_rom_map_elem_t mod_trezorcrypto_secp256k1_globals_table[] = {
      MP_ROM_PTR(&mod_trezorcrypto_secp256k1_verify_recover_obj)},
     {MP_ROM_QSTR(MP_QSTR_multiply),
      MP_ROM_PTR(&mod_trezorcrypto_secp256k1_multiply_obj)},
+    {MP_ROM_QSTR(MP_QSTR_tweak_pubkey),
+     MP_ROM_PTR(&mod_trezorcrypto_secp256k1_tweak_pubkey_obj)},
 #if !BITCOIN_ONLY
     {MP_ROM_QSTR(MP_QSTR_CANONICAL_SIG_ETHEREUM),
      MP_ROM_INT(CANONICAL_SIG_ETHEREUM)},

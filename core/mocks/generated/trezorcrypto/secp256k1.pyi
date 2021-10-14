@@ -51,3 +51,11 @@ def multiply(secret_key: bytes, public_key: bytes) -> bytes:
     Multiplies point defined by public_key with scalar defined by
     secret_key. Useful for ECDH.
     """
+
+
+# extmod/modtrezorcrypto/modtrezorcrypto-secp256k1.h
+def tweak_pubkey(public_key: bytes, tweak: bytes) -> bytes:
+    """
+    Tweaks a 33-byte public key by computing public_key + tweak*G as
+    specified in BIP-341.
+    """
