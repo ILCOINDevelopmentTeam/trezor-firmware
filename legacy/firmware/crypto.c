@@ -163,6 +163,10 @@ int cryptoMessageSign(const CoinInfo *coin, HDNode *node,
         // segwit
         signature[0] = 39 + pby;
         break;
+      case InputScriptType_SPENDTAPROOT:
+        // taproot
+        signature[0] = 43 + pby;
+        break;
       default:
         // p2pkh
         signature[0] = 31 + pby;
@@ -240,8 +244,29 @@ int cryptoMessageVerify(const CoinInfo *coin, const uint8_t *message,
                             address)) {
       return 4;
     }
+    if (witver != 0 || len != 20) {
+      return 2;
+    }
     ecdsa_get_pubkeyhash(pubkey, coin->curve->hasher_pubkey, addr_raw);
-    if (memcmp(recovered_raw, addr_raw, len) != 0 || witver != 0 || len != 20) {
+    if (memcmp(recovered_raw, addr_raw, len)) {
+      return 2;
+    }
+  } else
+      // taproot
+      if (signature[0] >= 43 && signature[0] <= 46) {
+    int witver = 0;
+    size_t len = 0;
+    if (!coin->bech32_prefix ||
+        !segwit_addr_decode(&witver, recovered_raw, &len, coin->bech32_prefix,
+                            address)) {
+      return 4;
+    }
+    if (witver != 1 || len != 32) {
+      return 2;
+    }
+    uint8_t tweaked_pubkey[32];
+    // TODO: ecdsa_tweak_pubkey(pubkey, tweaked_pubkey);
+    if (memcmp(tweaked_pubkey, addr_raw, len) != 0) {
       return 2;
     }
   } else {
