@@ -12,7 +12,7 @@ from apps.common import paths
 from . import address
 from .keychain import PATTERNS_ADDRESS, with_keychain_from_path
 from .layout import confirm_hash, should_we_show_domain, should_we_show_message
-from .typed_data import hash_struct, keccak256, validate_field_type
+from .typed_data import StructHasher, keccak256, validate_field_type
 
 if False:
     from typing import Dict
@@ -51,29 +51,28 @@ async def generate_typed_data_hash(
     await collect_types(ctx, "EIP712Domain", types)
     await collect_types(ctx, primary_type, types)
 
-    show_domain = await should_we_show_domain(ctx, types["EIP712Domain"].members)
-    # Member path starting with [0] means getting domain values, [1] is for message values
-    domain_separator = await hash_struct(
+    struct_hasher = StructHasher(
         ctx=ctx,
-        primary_type="EIP712Domain",
         types=types,
+        metamask_v4_compat=metamask_v4_compat,
+    )
+
+    show_domain = await should_we_show_domain(ctx, types["EIP712Domain"].members)
+    domain_separator = await struct_hasher.hash_struct(
+        primary_type="EIP712Domain",
         member_path=[0],
         show_data=show_domain,
         parent_objects=["EIP712"],
-        metamask_v4_compat=metamask_v4_compat,
     )
 
     show_message = await should_we_show_message(
         ctx, primary_type, types[primary_type].members
     )
-    message_hash = await hash_struct(
-        ctx=ctx,
+    message_hash = await struct_hasher.hash_struct(
         primary_type=primary_type,
-        types=types,
         member_path=[1],
         show_data=show_message,
         parent_objects=[primary_type],
-        metamask_v4_compat=metamask_v4_compat,
     )
 
     await confirm_hash(ctx, primary_type, message_hash)

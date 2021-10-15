@@ -15,7 +15,7 @@ from trezor.utils import HashWriter
 from .address import address_from_bytes
 
 if False:
-    from typing import Dict, Iterable
+    from typing import Dict, Iterable, List
     from trezor.wire import Context
 
 
@@ -35,150 +35,143 @@ def keccak256(message: bytes) -> bytes:
     return h.get_digest()
 
 
-# TODO: consider creating a class to limit the variables being passed
-# from function to function
-# (at least ctx, types or metamask_v4_compat are the same everywhere)
-async def hash_struct(
-    ctx: Context,
-    primary_type: str,
-    types: Dict[str, EthereumTypedDataStructAck],
-    member_path: list,
-    show_data: bool,
-    parent_objects: list,
-    metamask_v4_compat: bool = True,
-) -> bytes:
-    """
-    Encodes and hashes an object using Keccak256
-    """
-    w = get_hash_writer()
-    hash_type(w, primary_type, types)
-    await get_and_encode_data(
-        ctx=ctx,
-        w=w,
-        primary_type=primary_type,
-        types=types,
-        member_path=member_path,
-        show_data=show_data,
-        parent_objects=parent_objects,
-        metamask_v4_compat=metamask_v4_compat,
-    )
-    return w.get_digest()
+class StructHasher:
+    """Putting together the main hashing functionality"""
 
+    def __init__(
+        self,
+        ctx: Context,
+        types: Dict[str, EthereumTypedDataStructAck],
+        metamask_v4_compat: bool,
+    ) -> None:
+        self.ctx = ctx
+        self.types = types
+        self.metamask_v4_compat = metamask_v4_compat
 
-async def get_and_encode_data(
-    ctx: Context,
-    w: HashWriter,
-    primary_type: str,
-    types: Dict[str, EthereumTypedDataStructAck],
-    member_path: list,
-    show_data: bool,
-    parent_objects: list,
-    metamask_v4_compat: bool = True,
-) -> None:
-    """
-    Encodes an object by encoding and concatenating each of its members
+    async def hash_struct(
+        self,
+        primary_type: str,
+        member_path: list,
+        show_data: bool,
+        parent_objects: list,
+    ) -> bytes:
+        """
+        Encodes and hashes an object using Keccak256
+        """
+        w = get_hash_writer()
+        hash_type(w, primary_type, self.types)
+        await self.get_and_encode_data(
+            w=w,
+            primary_type=primary_type,
+            member_path=member_path,
+            show_data=show_data,
+            parent_objects=parent_objects,
+        )
+        return w.get_digest()
 
-    SPEC:
-    The encoding of a struct instance is enc(value₁) ‖ enc(value₂) ‖ … ‖ enc(valueₙ),
-    i.e. the concatenation of the encoded member values in the order that they appear in the type.
-    Each encoded member value is exactly 32-byte long.
+    async def get_and_encode_data(
+        self,
+        w: HashWriter,
+        primary_type: str,
+        member_path: list,
+        show_data: bool,
+        parent_objects: list,
+    ) -> None:
+        """
+        Encodes an object by encoding and concatenating each of its members
 
-    primary_type - Root type
-    data - Object to encode
-    types - Type definitions
-    """
-    type_members = types[primary_type].members
-    for member_index, member in enumerate(type_members):
-        member_value_path = member_path + [member_index]
-        data_type = member.type.data_type
-        field_name = member.name
+        SPEC:
+        The encoding of a struct instance is enc(value₁) ‖ enc(value₂) ‖ … ‖ enc(valueₙ),
+        i.e. the concatenation of the encoded member values in the order that they appear in the type.
+        Each encoded member value is exactly 32-byte long.
 
-        # Arrays and structs need special recursive handling
-        if data_type == EthereumDataType.STRUCT:
-            struct_name = member.type.struct_name
-            res = await hash_struct(
-                ctx=ctx,
-                primary_type=struct_name,
-                types=types,
-                member_path=member_value_path,
-                show_data=show_data,
-                parent_objects=parent_objects + [field_name],
-                metamask_v4_compat=metamask_v4_compat,
-            )
-            w.extend(res)
-        elif data_type == EthereumDataType.ARRAY:
-            # Getting the length of the array first, if not fixed
-            if member.type.size is None:
-                array_size = await get_array_size(ctx, member_value_path)
-            else:
-                array_size = member.type.size
+        primary_type - Root type
+        data - Object to encode
+        types - Type definitions
+        """
+        type_members = self.types[primary_type].members
+        for member_index, member in enumerate(type_members):
+            member_value_path = member_path + [member_index]
+            data_type = member.type.data_type
+            field_name = member.name
 
-            entry_type = member.type.entry_type
-            arr_w = get_hash_writer()
-            for i in range(array_size):
-                el_member_path = member_value_path + [i]
-                # TODO: we do not support arrays of arrays, check if we should
-                if entry_type.data_type == EthereumDataType.STRUCT:
-                    struct_name = entry_type.struct_name
-                    # Metamask V4 implementation has a bug, that causes the
-                    # behavior of structs in array be different from SPEC
-                    # Explanation at https://github.com/MetaMask/eth-sig-util/pull/107
-                    # encode_data() is the way to process structs in arrays, but
-                    # Metamask V4 is using hash_struct() even in this case
-                    if metamask_v4_compat:
-                        res = await hash_struct(
-                            ctx=ctx,
-                            primary_type=struct_name,
-                            types=types,
-                            member_path=el_member_path,
-                            show_data=show_data,
-                            parent_objects=parent_objects + [field_name],
-                            metamask_v4_compat=metamask_v4_compat,
-                        )
-                        arr_w.extend(res)
-                    else:
-                        await get_and_encode_data(
-                            ctx=ctx,
-                            w=arr_w,
-                            primary_type=struct_name,
-                            types=types,
-                            member_path=el_member_path,
-                            show_data=show_data,
-                            parent_objects=parent_objects + [field_name],
-                            metamask_v4_compat=metamask_v4_compat,
-                        )
-                else:
-                    value = await get_value(ctx, entry_type, el_member_path)
-                    encode_field(arr_w, entry_type, value)
-                    if show_data:
-                        await show_data_to_user(
-                            ctx=ctx,
-                            name=field_name,
-                            value=value,
-                            parent_objects=parent_objects,
-                            primary_type=primary_type,
-                            field=entry_type,
-                            array_index=i,
-                        )
-            w.extend(arr_w.get_digest())
-        else:
-            value = await get_value(ctx, member.type, member_value_path)
-            encode_field(w, member.type, value)
-            if show_data:
-                await show_data_to_user(
-                    ctx=ctx,
-                    name=field_name,
-                    value=value,
-                    parent_objects=parent_objects,
-                    primary_type=primary_type,
-                    field=member.type,
+            # Arrays and structs need special recursive handling
+            if data_type == EthereumDataType.STRUCT:
+                struct_name = member.type.struct_name
+                res = await self.hash_struct(
+                    primary_type=struct_name,
+                    member_path=member_value_path,
+                    show_data=show_data,
+                    parent_objects=parent_objects + [field_name],
                 )
+                w.extend(res)
+            elif data_type == EthereumDataType.ARRAY:
+                # Getting the length of the array first, if not fixed
+                if member.type.size is None:
+                    array_size = await get_array_size(self.ctx, member_value_path)
+                else:
+                    array_size = member.type.size
+
+                entry_type = member.type.entry_type
+                arr_w = get_hash_writer()
+                for i in range(array_size):
+                    el_member_path = member_value_path + [i]
+                    # TODO: we do not support arrays of arrays, check if we should
+                    if entry_type.data_type == EthereumDataType.STRUCT:
+                        struct_name = entry_type.struct_name
+                        # Metamask V4 implementation has a bug, that causes the
+                        # behavior of structs in array be different from SPEC
+                        # Explanation at https://github.com/MetaMask/eth-sig-util/pull/107
+                        # encode_data() is the way to process structs in arrays, but
+                        # Metamask V4 is using hash_struct() even in this case
+                        if self.metamask_v4_compat:
+                            res = await self.hash_struct(
+                                primary_type=struct_name,
+                                member_path=el_member_path,
+                                show_data=show_data,
+                                parent_objects=parent_objects + [field_name],
+                            )
+                            arr_w.extend(res)
+                        else:
+                            await self.get_and_encode_data(
+                                w=arr_w,
+                                primary_type=struct_name,
+                                member_path=el_member_path,
+                                show_data=show_data,
+                                parent_objects=parent_objects + [field_name],
+                            )
+                    else:
+                        value = await get_value(self.ctx, entry_type, el_member_path)
+                        encode_field(arr_w, entry_type, value)
+                        if show_data:
+                            await show_data_to_user(
+                                ctx=self.ctx,
+                                name=field_name,
+                                value=value,
+                                parent_objects=parent_objects,
+                                primary_type=primary_type,
+                                field=entry_type,
+                                array_index=i,
+                            )
+                w.extend(arr_w.get_digest())
+            else:
+                value = await get_value(self.ctx, member.type, member_value_path)
+                encode_field(w, member.type, value)
+                if show_data:
+                    await show_data_to_user(
+                        ctx=self.ctx,
+                        name=field_name,
+                        value=value,
+                        parent_objects=parent_objects,
+                        primary_type=primary_type,
+                        field=member.type,
+                    )
 
 
 async def show_data_to_user(
     ctx: Context,
     name: str,
-    value: str,
+    value: bytes,
     parent_objects: Iterable[str],
     primary_type: str,
     field: EthereumFieldType,
@@ -378,14 +371,14 @@ def encode_type(
     """
     result = b""
 
-    deps = []
+    deps: List[str] = []
     find_typed_dependencies(primary_type, types, deps)
     non_primary_deps = [dep for dep in deps if dep != primary_type]
     primary_first_sorted_deps = [primary_type] + sorted(non_primary_deps)
 
     for type_name in primary_first_sorted_deps:
         members = types[type_name].members
-        fields = ",".join(["%s %s" % (get_type_name(m.type), m.name) for m in members])
+        fields = ",".join([f"{get_type_name(m.type)} {m.name}" for m in members])
         result += b"%s(%s)" % (type_name, fields)
 
     return result
@@ -405,7 +398,7 @@ def find_typed_dependencies(
     """
     # We already have this type or it is not even a defined type
     if (primary_type in results) or (primary_type not in types):
-        return results
+        return
 
     results.append(primary_type)
 
@@ -492,7 +485,7 @@ def from_bytes_bigendian_signed(b: bytes) -> int:
         return int.from_bytes(b, "big")
 
 
-async def get_array_size(ctx: Context, member_path: list) -> bytes:
+async def get_array_size(ctx: Context, member_path: list) -> int:
     """
     Gets the length of an array at specific `member_path` from the client
     """

@@ -4,6 +4,7 @@ from trezor import ui
 from trezor.enums import ButtonRequestType
 from trezor.messages import EthereumStructMember
 from trezor.strings import format_amount
+
 # DO NOT use anything from trezor.ui.components (use trezor.ui.layouts)
 # Try to do it with layouts (confirm_properties function)
 from trezor.ui.components.tt.text import Text
