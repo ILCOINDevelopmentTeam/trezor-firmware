@@ -1,37 +1,31 @@
-if False:
-    from typing import Dict
-    from trezor.wire import Context
-
 from trezor.crypto.curve import secp256k1
-from trezor.messages import EthereumSignTypedData
-from trezor.messages import EthereumTypedDataSignature
-from trezor.messages import EthereumTypedDataStructAck
-from trezor.messages import EthereumTypedDataStructRequest
 from trezor.enums import EthereumDataType
+from trezor.messages import (
+    EthereumSignTypedData,
+    EthereumTypedDataSignature,
+    EthereumTypedDataStructAck,
+    EthereumTypedDataStructRequest,
+)
 
 from apps.common import paths
 
 from . import address
 from .keychain import PATTERNS_ADDRESS, with_keychain_from_path
-from .typed_data import (
-    hash_struct,
-    keccak256,
-    validate_field_type,
-)
-from .layout import (
-    should_we_show_domain,
-    should_we_show_message,
-    confirm_hash
-)
+from .layout import confirm_hash, should_we_show_domain, should_we_show_message
+from .typed_data import hash_struct, keccak256, validate_field_type
+
+if False:
+    from typing import Dict
+    from trezor.wire import Context
 
 
 @with_keychain_from_path(*PATTERNS_ADDRESS)
 async def sign_typed_data(ctx: Context, msg: EthereumSignTypedData, keychain):
+    await paths.validate_path(ctx, keychain, msg.address_n)
+
     data_hash = await generate_typed_data_hash(
         ctx, msg.primary_type, msg.metamask_v4_compat
     )
-
-    await paths.validate_path(ctx, keychain, msg.address_n)
 
     node = keychain.derive(msg.address_n)
     signature = secp256k1.sign(
@@ -40,7 +34,7 @@ async def sign_typed_data(ctx: Context, msg: EthereumSignTypedData, keychain):
 
     return EthereumTypedDataSignature(
         address=address.address_from_bytes(node.ethereum_pubkeyhash()),
-        signature=signature[1:] + bytearray([signature[0]]),
+        signature=signature[1:] + signature[0:1],
     )
 
 
@@ -58,8 +52,6 @@ async def generate_typed_data_hash(
     await collect_types(ctx, primary_type, types)
 
     show_domain = await should_we_show_domain(ctx, types["EIP712Domain"].members)
-    show_message = await should_we_show_message(ctx, primary_type, types[primary_type].members)
-
     # Member path starting with [0] means getting domain values, [1] is for message values
     domain_separator = await hash_struct(
         ctx=ctx,
@@ -68,7 +60,11 @@ async def generate_typed_data_hash(
         member_path=[0],
         show_data=show_domain,
         parent_objects=["EIP712"],
-        metamask_v4_compat=metamask_v4_compat
+        metamask_v4_compat=metamask_v4_compat,
+    )
+
+    show_message = await should_we_show_message(
+        ctx, primary_type, types[primary_type].members
     )
     message_hash = await hash_struct(
         ctx=ctx,
@@ -76,12 +72,11 @@ async def generate_typed_data_hash(
         types=types,
         member_path=[1],
         show_data=show_message,
-        parent_objects=["data"],
-        metamask_v4_compat=metamask_v4_compat
+        parent_objects=[primary_type],
+        metamask_v4_compat=metamask_v4_compat,
     )
 
-    if not show_message:
-        await confirm_hash(ctx, primary_type, message_hash)
+    await confirm_hash(ctx, primary_type, message_hash)
 
     return keccak256(b"\x19" + b"\x01" + domain_separator + message_hash)
 

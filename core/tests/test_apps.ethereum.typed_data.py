@@ -12,7 +12,7 @@ if not utils.BITCOIN_ONLY:
         encode_type,
         hash_type,
         encode_field,
-        validate_field,
+        validate_value,
         validate_field_type,
         find_typed_dependencies,
         keccak256,
@@ -20,79 +20,148 @@ if not utils.BITCOIN_ONLY:
         decode_data,
     )
 
-TYPES_BASIC = {
-    "EIP712Domain": ETDSA(
-        members=[
-            ESM(
-                name="name",
-                type=EFT(
-                    data_type=EDT.STRING,
-                ),
-            ),
-            ESM(
-                name="version",
-                type=EFT(
-                    data_type=EDT.STRING,
-                ),
-            ),
-            ESM(
-                name="chainId",
-                type=EFT(
-                    size=32,
-                    data_type=EDT.UINT,
-                ),
-            ),
-            ESM(
-                name="verifyingContract",
-                type=EFT(
-                    data_type=EDT.ADDRESS,
-                ),
-            ),
-        ]
-    ),
-    "Mail": ETDSA(
-        members=[
-            ESM(
-                name="from",
-                type=EFT(
-                    size=2,
-                    data_type=EDT.STRUCT,
-                    struct_name="Person",
-                ),
-            ),
-            ESM(
-                name="to",
-                type=EFT(
-                    size=2,
-                    data_type=EDT.STRUCT,
-                    struct_name="Person",
-                ),
-            ),
-            ESM(
-                name="contents",
-                type=EFT(
-                    data_type=EDT.STRING,
-                ),
-            ),
-        ]
-    ),
-    "Person": ETDSA(
-        members=[
-            ESM(
-                name="name",
-                type=EFT(
-                    data_type=EDT.STRING,
-                ),
-            ),
-            ESM(
-                name="wallet",
-                type=EFT(
-                    data_type=EDT.ADDRESS,
-                ),
-            ),
-        ]
-    ),
+
+# Helper functions from trezorctl to build expected type data structures
+def get_type_definitions(types: dict) -> dict:
+    result = {}
+    for struct, fields in types.items():
+        members = []
+        for name, type in fields:
+            field_type = get_field_type(type, types)
+            struct_member = ESM(
+                type=field_type,
+                name=name,
+            )
+            members.append(struct_member)
+
+        result[struct] = ETDSA(members=members)
+
+    return result
+
+
+def get_field_type(type_name: str, types: dict) -> EFT:
+    data_type = None
+    size = None
+    entry_type = None
+    struct_name = None
+
+    if is_array(type_name):
+        data_type = EDT.ARRAY
+        array_size = parse_array_n(type_name)
+        size = None if array_size == "dynamic" else array_size
+        member_typename = typeof_array(type_name)
+        entry_type = get_field_type(member_typename, types)
+    elif type_name.startswith("uint"):
+        data_type = EDT.UINT
+        size = get_byte_size_for_int_type(type_name)
+    elif type_name.startswith("int"):
+        data_type = EDT.INT
+        size = get_byte_size_for_int_type(type_name)
+    elif type_name.startswith("bytes"):
+        data_type = EDT.BYTES
+        size = None if type_name == "bytes" else parse_type_n(type_name)
+    elif type_name == "string":
+        data_type = EDT.STRING
+    elif type_name == "bool":
+        data_type = EDT.BOOL
+    elif type_name == "address":
+        data_type = EDT.ADDRESS
+    elif type_name in types:
+        data_type = EDT.STRUCT
+        size = len(types[type_name])
+        struct_name = type_name
+    else:
+        raise ValueError(f"Unsupported type name: {type_name}")
+
+    return EFT(
+        data_type=data_type,
+        size=size,
+        entry_type=entry_type,
+        struct_name=struct_name,
+    )
+
+
+def is_array(type_name: str) -> bool:
+    return type_name[-1] == "]"
+
+
+def typeof_array(type_name: str) -> str:
+    return type_name[: type_name.rindex("[")]
+
+
+def parse_type_n(type_name: str) -> int:
+    """Parse N from type<N>.
+
+    Example: "uint256" -> 256
+    """
+    # STRANGE: "ImportError: no module named 're'" in Micropython?
+    buff = ""
+    for char in reversed(type_name):
+        if char.isdigit():
+            buff += char
+        else:
+            return int("".join(reversed(buff)))
+
+
+def parse_array_n(type_name: str) -> Union[int, str]:
+    """Parse N in type[<N>] where "type" can itself be an array type."""
+    if type_name.endswith("[]"):
+        return "dynamic"
+
+    start_idx = type_name.rindex("[") + 1
+    return int(type_name[start_idx:-1])
+
+
+def get_byte_size_for_int_type(int_type: str) -> int:
+    return parse_type_n(int_type) // 8
+
+
+types_basic = {
+    "EIP712Domain": [
+        ("name", "string"),
+        ("version", "string"),
+        ("chainId", "uint256"),
+        ("verifyingContract", "address"),
+    ],
+    "Person": [
+        ("name", "string"),
+        ("wallet", "address"),
+    ],
+    "Mail": [
+        ("from", "Person"),
+        ("to", "Person"),
+        ("contents", "string"),
+    ],
 }
+TYPES_BASIC = get_type_definitions(types_basic)
+
+types_complex = {
+    "EIP712Domain": [
+        ("name", "string"),
+        ("version", "string"),
+        ("chainId", "uint256"),
+        ("verifyingContract", "address"),
+        ("salt", "bytes32"),
+    ],
+    "Person": [
+        ("name", "string"),
+        ("wallet", "address"),
+        ("married", "bool"),
+        ("kids", "uint8"),
+        ("karma", "int16"),
+        ("secret", "bytes"),
+        ("small_secret", "bytes16"),
+        ("pets", "string[]"),
+        ("two_best_friends", "string[2]"),
+    ],
+    "Mail": [
+        ("from", "Person"),
+        ("to", "Person"),
+        ("messages", "string[]"),
+    ],
+}
+TYPES_COMPLEX = get_type_definitions(types_complex)
+
 
 # TODO: these are currently not used, because of deleted hash_struct and encode_data unit tests
 # Try to mock the request_member_value(), load it with these dicts and make it return the correct value
@@ -118,114 +187,7 @@ MESSAGE_VALUES_BASIC = {
     },
 }
 
-TYPES_LIST = {
-    "EIP712Domain": ETDSA(
-        members=[
-            ESM(
-                name="name",
-                type=EFT(
-                    data_type=EDT.STRING,
-                ),
-            ),
-            ESM(
-                name="version",
-                type=EFT(
-                    data_type=EDT.STRING,
-                ),
-            ),
-            ESM(
-                name="chainId",
-                type=EFT(
-                    size=32,
-                    data_type=EDT.UINT,
-                ),
-            ),
-            ESM(
-                name="verifyingContract",
-                type=EFT(
-                    data_type=EDT.ADDRESS,
-                ),
-            ),
-        ]
-    ),
-    "Mail": ETDSA(
-        members=[
-            ESM(
-                name="from",
-                type=EFT(
-                    size=6,
-                    data_type=EDT.STRUCT,
-                    struct_name="Person",
-                ),
-            ),
-            ESM(
-                name="to",
-                type=EFT(
-                    size=6,
-                    data_type=EDT.STRUCT,
-                    struct_name="Person",
-                ),
-            ),
-            ESM(
-                name="messages",
-                type=EFT(
-                    data_type=EDT.ARRAY,
-                    entry_type=EFT(
-                        data_type=EDT.STRING,
-                    ),
-                ),
-            ),
-        ]
-    ),
-    "Person": ETDSA(
-        members=[
-            ESM(
-                name="name",
-                type=EFT(
-                    size=None,
-                    data_type=EDT.STRING,
-                ),
-            ),
-            ESM(
-                name="wallet",
-                type=EFT(
-                    data_type=EDT.ADDRESS,
-                ),
-            ),
-            ESM(
-                name="married",
-                type=EFT(
-                    data_type=EDT.BOOL,
-                ),
-            ),
-            ESM(
-                name="kids",
-                type=EFT(
-                    size=1,
-                    data_type=EDT.UINT,
-                ),
-            ),
-            ESM(
-                name="karma",
-                type=EFT(
-                    size=2,
-                    data_type=EDT.INT,
-                ),
-            ),
-            ESM(
-                name="pets",
-                type=EFT(
-                    data_type=EDT.ARRAY,
-                    entry_type=EFT(
-                        data_type=EDT.STRING,
-                    ),
-                ),
-            ),
-        ]
-    ),
-}
-
-MESSAGE_VALUES_LIST = {
+MESSAGE_VALUES_COMPLEX = {
     "messages": [b"Hello, Bob!", b"How are you?", b"Hope you're fine"],
     "to": {
         "name": b"Bob",
@@ -275,13 +237,13 @@ class TestEthereumSignTypedData(unittest.TestCase):
             ),
             (
                 "Person",
-                TYPES_LIST,
-                b"Person(string name,address wallet,bool married,uint8 kids,int16 karma,string[] pets)",
+                TYPES_COMPLEX,
+                b"Person(string name,address wallet,bool married,uint8 kids,int16 karma,bytes secret,bytes16 small_secret,string[] pets,string[2] two_best_friends)",
             ),
             (
                 "Mail",
-                TYPES_LIST,
-                b"Mail(Person from,Person to,string[] messages)Person(string name,address wallet,bool married,uint8 kids,int16 karma,string[] pets)",
+                TYPES_COMPLEX,
+                b"Mail(Person from,Person to,string[] messages)Person(string name,address wallet,bool married,uint8 kids,int16 karma,bytes secret,bytes16 small_secret,string[] pets,string[2] two_best_friends)",
             ),
         )
 
@@ -312,32 +274,52 @@ class TestEthereumSignTypedData(unittest.TestCase):
             self.assertEqual(w, expected)
 
     def test_find_typed_dependencies(self):
-        VECTORS = (  # primary_type, expected
+        # We need to be able to recognize dependency even as array of structs
+        types_dependency_only_as_array = {
+            "MAIN": [
+                ("jkl", "SECONDARY[]"),
+            ],
+            "SECONDARY": [
+                ("abc", "string"),
+                ("def", "TERNARY[][]"),
+            ],
+            "TERNARY": [
+                ("ghi", "string"),
+            ],
+        }
+        types_dependency_only_as_array = get_type_definitions(types_dependency_only_as_array)
+
+        VECTORS = (  # primary_type, expected, types
             (
                 "EIP712Domain",
                 ["EIP712Domain"],
+                TYPES_BASIC
             ),
             (
                 "Person",
                 ["Person"],
+                TYPES_BASIC
             ),
             (
                 "Mail",
                 ["Mail", "Person"],
+                TYPES_BASIC
             ),
             (
-                "Mail[]",
-                ["Mail", "Person"],
+                "MAIN",
+                ["MAIN", "SECONDARY", "TERNARY"],
+                types_dependency_only_as_array
             ),
             (
                 "UnexistingType",
                 [],
+                TYPES_BASIC
             ),
         )
 
-        for primary_type, expected in VECTORS:
+        for primary_type, expected, types in VECTORS:
             res = []
-            find_typed_dependencies(primary_type=primary_type, types=TYPES_BASIC, results=res)
+            find_typed_dependencies(primary_type=primary_type, types=types, results=res)
             self.assertEqual(res, expected)
 
     def test_encode_field(self):
@@ -396,7 +378,7 @@ class TestEthereumSignTypedData(unittest.TestCase):
                 )
                 self.assertEqual(w, expected)
 
-    def test_validate_field(self):
+    def test_validate_value(self):
         VECTORS_VALID_INVALID = (  # field, valid_values, invalid_values
             (
                 EFT(data_type=EDT.UINT, size=1),
@@ -427,10 +409,10 @@ class TestEthereumSignTypedData(unittest.TestCase):
 
         for field, valid_values, invalid_values in VECTORS_VALID_INVALID:
             for valid_value in valid_values:
-                validate_field(field=field, field_name="test", value=valid_value)
+                validate_value(field=field, value=valid_value)
             for invalid_value in invalid_values:
                 with self.assertRaises(wire.DataError):
-                    validate_field(field=field, field_name="test", value=invalid_value)
+                    validate_value(field=field, value=invalid_value)
 
     def test_validate_field_type(self):
         ET = EFT(data_type=EDT.BYTES, size=8)

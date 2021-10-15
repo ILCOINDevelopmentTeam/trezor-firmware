@@ -1,13 +1,12 @@
 from ubinascii import hexlify
 
-if False:
-    from typing import Awaitable, List
-    from trezor.wire import Context
-
 from trezor import ui
 from trezor.enums import ButtonRequestType
 from trezor.messages import EthereumStructMember
 from trezor.strings import format_amount
+# DO NOT use anything from trezor.ui.components (use trezor.ui.layouts)
+# Try to do it with layouts (confirm_properties function)
+from trezor.ui.components.tt.text import Text
 from trezor.ui.layouts import (
     confirm_address,
     confirm_amount,
@@ -15,20 +14,22 @@ from trezor.ui.layouts import (
     confirm_output,
 )
 from trezor.ui.layouts.tt.altcoin import confirm_total_ethereum
-
-# DO NOT use anything from trezor.ui.components (use trezor.ui.layouts)
-# Try to do it with layouts (confirm_properties function)
-from trezor.ui.components.tt.text import Text
 from trezor.utils import chunks
 
-from apps.common.confirm import confirm, require_hold_to_confirm
+from apps.common.confirm import confirm
 
 from . import networks, tokens
 from .address import address_from_bytes
 from .typed_data import decode_data, get_value
 
+if False:
+    from typing import Awaitable, List
+    from trezor.wire import Context
 
-async def should_we_show_domain(ctx: Context, domain_members: List[EthereumStructMember]) -> bool:
+
+async def should_we_show_domain(
+    ctx: Context, domain_members: List[EthereumStructMember]
+) -> bool:
     # Getting the name and version
     name = b"unknown"
     version = b"unknown"
@@ -36,9 +37,9 @@ async def should_we_show_domain(ctx: Context, domain_members: List[EthereumStruc
         member_value_path = [0] + [member_index]
         member_name = member.name
         if member_name == "name":
-            name = await get_value(ctx, member, member_value_path)
+            name = await get_value(ctx, member.type, member_value_path)
         elif member_name == "version":
-            version = await get_value(ctx, member, member_value_path)
+            version = await get_value(ctx, member.type, member_value_path)
 
     page = Text("Typed Data", ui.ICON_SEND, icon_color=ui.GREEN)
 
@@ -74,16 +75,17 @@ async def should_we_show_message(
     return await confirm(ctx, page, ButtonRequestType.Other)
 
 
-async def confirm_hash(
-    ctx: Context, primary_type: str, typed_data_hash: bytes
-):
-    text = Text(
-        "Sign typed data?", ui.ICON_CONFIG, icon_color=ui.GREEN, new_lines=False
+async def confirm_hash(ctx: Context, primary_type: str, typed_data_hash: bytes):
+    data = "0x" + hexlify(typed_data_hash).decode()
+    return await confirm_blob(
+        ctx,
+        "confirm_resulting_hash",
+        title="Sign typed data?",
+        description=f"Hashed {primary_type}:",
+        data=data,
+        icon=ui.ICON_CONFIG,
+        icon_color=ui.GREEN,
     )
-    text.bold(limit_str(primary_type))
-    text.mono(*split_data("0x" + hexlify(typed_data_hash).decode()))
-
-    return await require_hold_to_confirm(ctx, text, ButtonRequestType.ConfirmOutput)
 
 
 def require_confirm_tx(

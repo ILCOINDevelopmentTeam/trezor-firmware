@@ -1,26 +1,28 @@
-if False:
-    from typing import Dict
-    from trezor.wire import Context
-
 from ubinascii import hexlify
 
 from trezor import wire
-from trezor.enums import EthereumDataType, ButtonRequestType
-from trezor.messages import EthereumFieldType
-from trezor.messages import EthereumTypedDataStructAck
-from trezor.messages import EthereumTypedDataValueAck
-from trezor.messages import EthereumTypedDataValueRequest
-from trezor.messages import EthereumStructMember
-
-from trezor.ui.layouts import (
-    confirm_properties
-)
-
-
-from trezor.utils import HashWriter
 from trezor.crypto.hashlib import sha3_256
+from trezor.enums import ButtonRequestType, EthereumDataType
+from trezor.messages import (
+    EthereumFieldType,
+    EthereumTypedDataStructAck,
+    EthereumTypedDataValueAck,
+    EthereumTypedDataValueRequest,
+)
+from trezor.ui.layouts import confirm_blob, confirm_text
+from trezor.utils import HashWriter
 
 from .address import address_from_bytes
+
+if False:
+    from typing import Dict, Iterable
+    from trezor.wire import Context
+
+
+# Maximum data size we support
+MAX_VALUE_BYTE_SIZE = 1024
+# Field type for getting the array length from client, so we can check the return value
+ARRAY_LENGTH_TYPE = EthereumFieldType(data_type=EthereumDataType.UINT, size=2)
 
 
 def get_hash_writer() -> HashWriter:
@@ -105,12 +107,11 @@ async def get_and_encode_data(
             )
             w.extend(res)
         elif data_type == EthereumDataType.ARRAY:
-            # Getting the length of the array first and validating it
-            length_res = await request_member_value(ctx, member_value_path)
-            array_size = int.from_bytes(length_res.value, "big")
-            if member.type.size is not None:
-                if array_size != member.type.size:
-                    raise wire.DataError(f"{field_name} - invalid size for fixes-sized array")
+            # Getting the length of the array first, if not fixed
+            if member.type.size is None:
+                array_size = await get_array_size(ctx, member_value_path)
+            else:
+                array_size = member.type.size
 
             entry_type = member.type.entry_type
             arr_w = get_hash_writer()
@@ -147,44 +148,64 @@ async def get_and_encode_data(
                             metamask_v4_compat=metamask_v4_compat,
                         )
                 else:
-                    value = await get_value(ctx, member, el_member_path)
+                    value = await get_value(ctx, entry_type, el_member_path)
                     encode_field(arr_w, entry_type, value)
                     if show_data:
-                        title = ".".join(parent_objects) + " - " + primary_type
-                        type_name = get_type_name(entry_type)
-                        await show_data_to_user(ctx, field_name, value, title, type_name, i)
+                        await show_data_to_user(
+                            ctx=ctx,
+                            name=field_name,
+                            value=value,
+                            parent_objects=parent_objects,
+                            primary_type=primary_type,
+                            field=entry_type,
+                            array_index=i,
+                        )
             w.extend(arr_w.get_digest())
         else:
-            value = await get_value(ctx, member, member_value_path)
+            value = await get_value(ctx, member.type, member_value_path)
             encode_field(w, member.type, value)
             if show_data:
-                title = ".".join(parent_objects) + " - " + primary_type
-                type_name = get_type_name(member.type)
-                await show_data_to_user(ctx, field_name, value, title, type_name)
+                await show_data_to_user(
+                    ctx=ctx,
+                    name=field_name,
+                    value=value,
+                    parent_objects=parent_objects,
+                    primary_type=primary_type,
+                    field=member.type,
+                )
 
 
 async def show_data_to_user(
     ctx: Context,
     name: str,
     value: str,
-    title: str,
-    type_name: str,
-    array_index: int = None
+    parent_objects: Iterable[str],
+    primary_type: str,
+    field: EthereumFieldType,
+    array_index: int = None,
 ) -> None:
+    type_name = get_type_name(field)
+    title = f"{'.'.join(parent_objects)} - {primary_type}"
+
     if array_index is not None:
         array_str = f"[{array_index}]"
     else:
         array_str = ""
 
-    props = [
-        (f"{name}{array_str} ({type_name})", decode_data(value, type_name)),
-    ]
+    description = f"{name}{array_str} ({type_name})"
+    data = decode_data(value, type_name)
 
-    await confirm_properties(
+    if field.data_type in (EthereumDataType.ADDRESS, EthereumDataType.BYTES):
+        func = confirm_blob
+    else:
+        func = confirm_text
+
+    await func(
         ctx,
         "show_data",
         title=title,
-        props=props,
+        data=data,
+        description=description,
         br_code=ButtonRequestType.Other,
     )
 
@@ -218,7 +239,7 @@ def encode_field(
         else:
             write_rightpad32(w, value)
     elif data_type == EthereumDataType.STRING:
-        w.extend((keccak256(value)))
+        w.extend(keccak256(value))
     elif data_type == EthereumDataType.INT:
         write_leftpad32(w, value, signed=True)
     elif data_type in [
@@ -236,56 +257,50 @@ def write_leftpad32(w: HashWriter, value: bytes, signed: bool = False) -> None:
 
     # Values need to be sign-extended, so accounting for negative ints
     if signed and value[0] & 0x80:
-        pad_value = b"\xff"
+        pad_value = 0xFF
     else:
-        pad_value = b"\x00"
+        pad_value = 0x00
 
-    missing_bytes = 32 - len(value)
-    to_write = missing_bytes * pad_value + value
-    w.extend(to_write)
+    for _ in range(32 - len(value)):
+        w.append(pad_value)
+    w.extend(value)
 
 
 def write_rightpad32(w: HashWriter, value: bytes) -> None:
     assert len(value) <= 32
 
-    missing_bytes = 32 - len(value)
-    to_write = value + missing_bytes * b"\x00"
-    w.extend(to_write)
+    w.extend(value)
+    for _ in range(32 - len(value)):
+        w.append(0x00)
 
 
-def validate_field(field: EthereumFieldType, field_name: str, value: bytes) -> None:
+def validate_value(field: EthereumFieldType, value: bytes) -> None:
     """
     Makes sure the byte data we receive are not corrupted or incorrect
 
     Raises wire.DataError if it encounters a problem, so clients are notified
     """
-    field_size = field.size
-    field_type = field.data_type
-
     # Checking if the size corresponds to what is defined in types,
     # and also setting our maximum supported size in bytes
-    if field_size is not None:
-        if len(value) != field_size:
-            raise wire.DataError(f"{field_name}: invalid length")
+    if field.size is not None:
+        if len(value) != field.size:
+            raise wire.DataError("Invalid length")
     else:
-        max_byte_size = 1024
-        if len(value) > max_byte_size:
-            raise wire.DataError(
-                f"{field_name}: invalid length, bigger than {max_byte_size}"
-            )
+        if len(value) > MAX_VALUE_BYTE_SIZE:
+            raise wire.DataError("Invalid length, bigger than {MAX_VALUE_BYTE_SIZE}")
 
     # Specific tests for some data types
-    if field_type == EthereumDataType.BOOL:
-        if value not in [b"\x00", b"\x01"]:
-            raise wire.DataError(f"{field_name}: invalid boolean value")
-    elif field_type == EthereumDataType.ADDRESS:
+    if field.data_type == EthereumDataType.BOOL:
+        if value not in (b"\x00", b"\x01"):
+            raise wire.DataError("Invalid boolean value")
+    elif field.data_type == EthereumDataType.ADDRESS:
         if len(value) != 20:
-            raise wire.DataError(f"{field_name}: invalid address")
-    elif field_type == EthereumDataType.STRING:
+            raise wire.DataError("Invalid address")
+    elif field.data_type == EthereumDataType.STRING:
         try:
             value.decode()
         except UnicodeError:
-            raise wire.DataError(f"{field_name}: invalid UTF-8")
+            raise wire.DataError("Invalid UTF-8")
 
 
 def validate_field_type(field: EthereumFieldType) -> None:
@@ -299,42 +314,41 @@ def validate_field_type(field: EthereumFieldType) -> None:
     # entry_type is only for arrays
     if data_type == EthereumDataType.ARRAY:
         if field.entry_type is None:
-            raise wire.DataError("Missing entry_type in array EthereumFieldType")
+            raise wire.DataError("Missing entry_type in array")
         # We also need to validate it recursively
         validate_field_type(field.entry_type)
     else:
         if field.entry_type is not None:
-            raise wire.DataError("Redundant entry_type in nonarray EthereumFieldType")
+            raise wire.DataError("Unexpected entry_type in nonarray")
 
     # struct_name is only for structs
     if data_type == EthereumDataType.STRUCT:
         if field.struct_name is None:
-            raise wire.DataError("Missing struct_name in struct EthereumFieldType")
+            raise wire.DataError("Missing struct_name in struct")
     else:
         if field.struct_name is not None:
-            raise wire.DataError("Redundant struct_name in nonstruct EthereumFieldType")
+            raise wire.DataError("Unexpected struct_name in nonstruct")
 
     # size is special for each type
     if data_type == EthereumDataType.STRUCT:
         if field.size is None:
-            raise wire.DataError("Missing size in struct EthereumFieldType")
+            raise wire.DataError("Missing size in struct")
     elif data_type == EthereumDataType.BYTES:
-        if field.size is not None:
-            if field.size not in range(1, 33):
-                raise wire.DataError("Invalid size in bytes EthereumFieldType")
+        if field.size is not None and not 1 <= field.size <= 32:
+            raise wire.DataError("Invalid size in bytes")
     elif data_type in [
         EthereumDataType.UINT,
         EthereumDataType.INT,
     ]:
-        if field.size not in range(1, 33):
-            raise wire.DataError("Invalid size in int/uint EthereumFieldType")
+        if field.size is None or not 1 <= field.size <= 32:
+            raise wire.DataError("Invalid size in int/uint")
     elif data_type in [
         EthereumDataType.STRING,
         EthereumDataType.BOOL,
         EthereumDataType.ADDRESS,
     ]:
         if field.size is not None:
-            raise wire.DataError("Redundant size in str/bool/addr EthereumFieldType")
+            raise wire.DataError("Unexpected size in str/bool/addr")
 
 
 def hash_type(
@@ -389,21 +403,27 @@ def find_typed_dependencies(
     types - Type definitions
     results - Current set of accumulated types
     """
-    # When being an array, getting the part before the square brackets
-    if primary_type[-1] == "]":
-        primary_type = primary_type[: primary_type.index("[")]
-
     # We already have this type or it is not even a defined type
     if (primary_type in results) or (primary_type not in types):
         return results
 
     results.append(primary_type)
 
-    # Recursively adding all the children struct types
+    # Recursively adding all the children struct types,
+    # also looking into (even nested) arrays for them
     type_members = types[primary_type].members
     for member in type_members:
         if member.type.data_type == EthereumDataType.STRUCT:
             find_typed_dependencies(member.type.struct_name, types, results)
+        elif member.type.data_type == EthereumDataType.ARRAY:
+            # Finding the last entry_type and checking it for being struct
+            entry_type = member.type.entry_type
+            while True:
+                if entry_type.entry_type is None:
+                    break
+                entry_type = entry_type.entry_type
+            if entry_type.data_type == EthereumDataType.STRUCT:
+                find_typed_dependencies(entry_type.struct_name, types, results)
 
 
 def get_type_name(field: EthereumFieldType) -> str:
@@ -429,21 +449,17 @@ def get_type_name(field: EthereumFieldType) -> str:
             return f"{type_name}[]"
         else:
             return f"{type_name}[{size}]"
-    elif data_type in [
-        EthereumDataType.STRING,
-        EthereumDataType.BOOL,
-        EthereumDataType.ADDRESS,
-    ]:
-        return TYPE_TRANSLATION_DICT[data_type]
-    elif data_type in [EthereumDataType.UINT, EthereumDataType.INT]:
+    elif data_type in (EthereumDataType.UINT, EthereumDataType.INT):
         return TYPE_TRANSLATION_DICT[data_type] + str(size * 8)
     elif data_type == EthereumDataType.BYTES:
         if size:
             return TYPE_TRANSLATION_DICT[data_type] + str(size)
         else:
             return TYPE_TRANSLATION_DICT[data_type]
-
-    raise ValueError  # Unsupported data type
+    else:
+        # all remaining types can use the name directly
+        # if the data_type is left out, this will raise KeyError
+        return TYPE_TRANSLATION_DICT[data_type]
 
 
 def decode_data(data: bytes, type_name: str) -> str:
@@ -459,12 +475,12 @@ def decode_data(data: bytes, type_name: str) -> str:
         return str(int.from_bytes(data, "big"))
     elif type_name.startswith("int"):
         # Micropython does not implement "signed" arg in int.from_bytes()
-        return str(from_bytes_to_bigendian_signed(data))
+        return str(from_bytes_bigendian_signed(data))
 
     raise ValueError  # Unsupported data type for direct field decoding
 
 
-def from_bytes_to_bigendian_signed(b: bytes) -> int:
+def from_bytes_bigendian_signed(b: bytes) -> int:
     negative = b[0] & 0x80
     if negative:
         neg_b = bytearray(b)
@@ -476,33 +492,28 @@ def from_bytes_to_bigendian_signed(b: bytes) -> int:
         return int.from_bytes(b, "big")
 
 
+async def get_array_size(ctx: Context, member_path: list) -> bytes:
+    """
+    Gets the length of an array at specific `member_path` from the client
+    """
+    length_value = await get_value(ctx, ARRAY_LENGTH_TYPE, member_path)
+    return int.from_bytes(length_value, "big")
+
+
 async def get_value(
     ctx: Context,
-    member: EthereumStructMember,
+    field: EthereumFieldType,
     member_value_path: list,
 ) -> bytes:
     """
-    Gets a single value from the client
-    """
-    res = await request_member_value(ctx, member_value_path)
-
-    # In case of being in array, validating against its entry type
-    if member.type.data_type == EthereumDataType.ARRAY:
-        field = member.type.entry_type
-    else:
-        field = member.type
-
-    validate_field(field=field, field_name=member.name, value=res.value)
-    return res.value
-
-
-async def request_member_value(
-    ctx: Context, member_path: list
-) -> EthereumTypedDataValueAck:
-    """
-    Requests a value of member at `member_path` from the client
+    Gets a single value from the client and performs its validation
     """
     req = EthereumTypedDataValueRequest(
-        member_path=member_path,
+        member_path=member_value_path,
     )
-    return await ctx.call(req, EthereumTypedDataValueAck)
+    res = await ctx.call(req, EthereumTypedDataValueAck)
+    value = res.value
+
+    validate_value(field=field, value=value)
+
+    return value
