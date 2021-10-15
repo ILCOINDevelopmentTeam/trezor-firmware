@@ -35,6 +35,7 @@
 #include "util.h"
 
 #define SEGWIT_VERSION_0 0
+#define SEGWIT_VERSION_1 1
 
 #define CASHADDR_P2KH (0)
 #define CASHADDR_P2SH (8)
