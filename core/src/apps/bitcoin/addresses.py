@@ -1,5 +1,6 @@
 from trezor import wire
 from trezor.crypto import base58, cashaddr
+from trezor.crypto.curve import secp256k1
 from trezor.crypto.hashlib import sha256
 from trezor.enums import InputScriptType
 from trezor.messages import MultisigRedeemScriptType
@@ -8,7 +9,7 @@ from trezor.utils import HashWriter
 from apps.common import address_type
 from apps.common.coininfo import CoinInfo
 
-from .common import ecdsa_hash_pubkey, encode_bech32_address
+from .common import ecdsa_hash_pubkey, encode_bech32_address, tagged_hashwriter
 from .multisig import multisig_get_pubkeys, multisig_pubkey_index
 from .scripts import output_script_native_segwit, write_output_script_multisig
 
@@ -55,6 +56,15 @@ def get_address(
 
         # native p2wpkh
         return address_p2wpkh(node.public_key(), coin)
+
+    elif script_type == InputScriptType.SPENDTAPROOT:  # taproot
+        if not coin.taproot or not coin.bech32_prefix:
+            raise wire.ProcessError("Taproot not enabled on this coin")
+
+        if multisig is not None:
+            raise wire.ProcessError("Multisig not supported for taproot")
+
+        return address_p2tr(node.public_key(), coin)
 
     elif (
         script_type == InputScriptType.SPENDP2SHWITNESS
@@ -128,6 +138,15 @@ def address_p2wpkh(pubkey: bytes, coin: CoinInfo) -> str:
 
 def address_p2wsh(witness_script_hash: bytes, hrp: str) -> str:
     return encode_bech32_address(hrp, 0, witness_script_hash)
+
+
+def address_p2tr(internal_pubkey: bytes, coin: CoinInfo) -> str:
+    assert coin.bech32_prefix is not None
+    h_internal_pubkey = tagged_hashwriter(b"TapTweak")
+    h_internal_pubkey.extend(internal_pubkey[1:])
+    tweak = h_internal_pubkey.get_digest()
+    output_pubkey = secp256k1.tweak_pubkey(b"\x02" + internal_pubkey[1:], tweak)
+    return encode_bech32_address(coin.bech32_prefix, 1, output_pubkey[1:])
 
 
 def address_to_cashaddr(address: str, coin: CoinInfo) -> str:
