@@ -152,10 +152,19 @@ message EthereumSignTypedData {
     optional bool metamask_v4_compat = 3 [default=true]; // use MetaMask v4 (see https://github.com/MetaMask/eth-sig-util/issues/106)
 }
 
+/**
+ * Response: Device asks for type information about a struct.
+ * @end
+ * @next EthereumTypedDataStructAck
+ */
 message EthereumTypedDataStructRequest {
     required string name = 1; // name of the requested struct
 }
 
+/**
+ * Request: Type information about a struct.
+ * @next EthereumTypedDataStructRequest
+ */
 message EthereumTypedDataStructAck {
     repeated EthereumStructMember members = 1;
 
@@ -187,10 +196,19 @@ message EthereumTypedDataStructAck {
     }
 }
 
+/**
+ * Response: Device asks for data at the specific member path.
+ * @end
+ * @next EthereumTypedDataValueAck
+ */
 message EthereumTypedDataValueRequest {
     repeated uint32 member_path = 1; // member path requested by device
 }
 
+/**
+ * Request: Single value of a specific atomic field.
+ * @next EthereumTypedDataValueRequest
+ */
 message EthereumTypedDataValueAck {
     required bytes value = 1;
     // * atomic types: value of the member.
