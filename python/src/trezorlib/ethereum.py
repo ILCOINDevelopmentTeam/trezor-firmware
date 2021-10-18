@@ -36,13 +36,7 @@ def decode_hex(value: str) -> bytes:
 def find_typed_dependencies(
     primary_type: str, types: dict, results: list = None
 ) -> list:
-    """
-    Finds all types within a type definition object
-
-    primary_type - Root type
-    types - Type definitions
-    results - Current set of accumulated types
-    """
+    """Find all types within a type definition object."""
     if results is None:
         results = []
 
@@ -65,22 +59,13 @@ def find_typed_dependencies(
 
 
 def get_relevant_types(primary_type: str, types: dict) -> dict:
-    """
-    Gets a dict with all relevant type definitions for a certain type
-
-    primary_type - Root type
-    types - All type definitions
-    """
+    """Get a dict with all relevant type definitions for a certain type."""
     all_deps = find_typed_dependencies(primary_type, types)
     return {type_name: types[type_name] for type_name in all_deps}
 
 
 def sanitize_typed_data(data: dict) -> dict:
-    """
-    Removes properties from a message object that are not defined per EIP-712
-
-    data - typed message object
-    """
+    """Remove properties from a message object that are not defined per EIP-712."""
     REQUIRED_KEYS = ("types", "primaryType", "domain", "message")
     sanitized_data = {key: data[key] for key in REQUIRED_KEYS}
     sanitized_data["types"].setdefault("EIP712Domain", [])
@@ -96,10 +81,7 @@ def typeof_array(type_name: str) -> str:
 
 
 def parse_type_n(type_name: str) -> int:
-    """Parse N from type<N>.
-
-    Example: "uint256" -> 256
-    """
+    """Parse N from type<N>. Example: "uint256" -> 256."""
     return int(re.search(r"\d+$", type_name).group(0))
 
 

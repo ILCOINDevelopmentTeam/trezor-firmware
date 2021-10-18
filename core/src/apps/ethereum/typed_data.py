@@ -23,7 +23,6 @@ if False:
     from trezor.wire import Context
 
 
-# TODO: the functions' docstrings need to be updated to match current situation
 # TODO: get better layouts
 # TODO: create unit tests for hashing class
 
@@ -44,7 +43,7 @@ def keccak256(message: bytes) -> bytes:
 
 
 class StructHasher:
-    """Putting together the main hashing functionality"""
+    """Putting together the main hashing functionality."""
 
     def __init__(
         self,
@@ -63,9 +62,7 @@ class StructHasher:
         show_data: bool,
         parent_objects: list,
     ) -> bytes:
-        """
-        Encodes and hashes an object using Keccak256
-        """
+        """Generate a hash representation of the whole struct."""
         w = get_hash_writer()
         hash_type(w, primary_type, self.types)
         await self.get_and_encode_data(
@@ -86,16 +83,12 @@ class StructHasher:
         parent_objects: list,
     ) -> None:
         """
-        Encodes an object by encoding and concatenating each of its members
+        Gradually fetch data from client and encode the whole struct.
 
         SPEC:
         The encoding of a struct instance is enc(value₁) ‖ enc(value₂) ‖ … ‖ enc(valueₙ),
         i.e. the concatenation of the encoded member values in the order that they appear in the type.
         Each encoded member value is exactly 32-byte long.
-
-        primary_type - Root type
-        data - Object to encode
-        types - Type definitions
         """
         type_members = self.types[primary_type].members
         for member_index, member in enumerate(type_members):
@@ -204,49 +197,6 @@ class StructHasher:
                     )
 
 
-async def show_data_to_user(
-    ctx: Context,
-    name: str,
-    value: bytes,
-    parent_objects: Iterable[str],
-    primary_type: str,
-    field: EthereumFieldType,
-    array_index: Optional[int] = None,
-) -> None:
-    type_name = get_type_name(field)
-    if parent_objects:
-        title = f"{'.'.join(parent_objects)} - {primary_type}"
-    else:
-        title = primary_type
-
-    if array_index is not None:
-        array_str = f"[{array_index}]"
-    else:
-        array_str = ""
-
-    description = f"{name}{array_str} ({type_name})"
-    data = decode_data(value, type_name)
-
-    if field.data_type in (EthereumDataType.ADDRESS, EthereumDataType.BYTES):
-        await confirm_blob(
-            ctx,
-            "show_data",
-            title=title,
-            data=data,
-            description=description,
-            br_code=ButtonRequestType.Other,
-        )
-    else:
-        await confirm_text(
-            ctx,
-            "show_data",
-            title=title,
-            data=data,
-            description=description,
-            br_code=ButtonRequestType.Other,
-        )
-
-
 def encode_field(
     w: HashWriter,
     field: EthereumFieldType,
@@ -313,9 +263,9 @@ def write_rightpad32(w: HashWriter, value: bytes) -> None:
 
 def validate_value(field: EthereumFieldType, value: bytes) -> None:
     """
-    Makes sure the byte data we receive are not corrupted or incorrect
+    Make sure the byte data we receive are not corrupted or incorrect.
 
-    Raises wire.DataError if it encounters a problem, so clients are notified
+    Raise wire.DataError if encountering a problem, so clients are notified.
     """
     # Checking if the size corresponds to what is defined in types,
     # and also setting our maximum supported size in bytes
@@ -342,9 +292,9 @@ def validate_value(field: EthereumFieldType, value: bytes) -> None:
 
 def validate_field_type(field: EthereumFieldType) -> None:
     """
-    Makes sure the field type is consistent with our expectation
+    Make sure the field type is consistent with our expectation.
 
-    Raises wire.DataError if it encounters a problem, so clients are notified
+    Raise wire.DataError if encountering a problem, so clients are notified.
     """
     data_type = field.data_type
 
@@ -391,9 +341,7 @@ def validate_field_type(field: EthereumFieldType) -> None:
 def hash_type(
     w: HashWriter, primary_type: str, types: Dict[str, EthereumTypedDataStructAck]
 ) -> None:
-    """
-    Encodes and hashes a type using Keccak256
-    """
+    """Create a representation of a type."""
     result = keccak256(encode_type(primary_type, types))
     w.extend(result)
 
@@ -402,16 +350,11 @@ def encode_type(
     primary_type: str, types: Dict[str, EthereumTypedDataStructAck]
 ) -> bytes:
     """
-    Encodes the type of an object by encoding a comma delimited list of its members
-
     SPEC:
     The type of a struct is encoded as name ‖ "(" ‖ member₁ ‖ "," ‖ member₂ ‖ "," ‖ … ‖ memberₙ ")"
     where each member is written as type ‖ " " ‖ name
     If the struct type references other struct types (and these in turn reference even more struct types),
     then the set of referenced struct types is collected, sorted by name and appended to the encoding.
-
-    primary_type - Root type to encode
-    types - Type definitions
     """
     result = b""
 
@@ -433,13 +376,7 @@ def find_typed_dependencies(
     types: Dict[str, EthereumTypedDataStructAck],
     results: list,
 ) -> None:
-    """
-    Finds all types within a type definition object
-
-    primary_type - Root type
-    types - Type definitions
-    results - Current set of accumulated types
-    """
+    """Find all types within a type definition object."""
     # We already have this type or it is not even a defined type
     if (primary_type in results) or (primary_type not in types):
         return
@@ -467,7 +404,7 @@ def find_typed_dependencies(
 
 
 def get_type_name(field: EthereumFieldType) -> str:
-    """Create a string from type definition (like uint256 or bytes16)"""
+    """Create a string from type definition (like uint256 or bytes16)."""
     data_type = field.data_type
     size = field.size
 
@@ -536,9 +473,7 @@ def from_bytes_bigendian_signed(b: bytes) -> int:
 
 
 async def get_array_size(ctx: Context, member_path: list) -> int:
-    """
-    Gets the length of an array at specific `member_path` from the client
-    """
+    """Get the length of an array at specific `member_path` from the client."""
     length_value = await get_value(ctx, ARRAY_LENGTH_TYPE, member_path)
     return int.from_bytes(length_value, "big")
 
@@ -548,9 +483,7 @@ async def get_value(
     field: EthereumFieldType,
     member_value_path: list,
 ) -> bytes:
-    """
-    Gets a single value from the client and performs its validation
-    """
+    """Get a single value from the client and perform its validation."""
     req = EthereumTypedDataValueRequest(
         member_path=member_value_path,
     )
@@ -560,6 +493,49 @@ async def get_value(
     validate_value(field=field, value=value)
 
     return value
+
+
+async def show_data_to_user(
+    ctx: Context,
+    name: str,
+    value: bytes,
+    parent_objects: Iterable[str],
+    primary_type: str,
+    field: EthereumFieldType,
+    array_index: Optional[int] = None,
+) -> None:
+    type_name = get_type_name(field)
+    if parent_objects:
+        title = f"{'.'.join(parent_objects)} - {primary_type}"
+    else:
+        title = primary_type
+
+    if array_index is not None:
+        array_str = f"[{array_index}]"
+    else:
+        array_str = ""
+
+    description = f"{name}{array_str} ({type_name})"
+    data = decode_data(value, type_name)
+
+    if field.data_type in (EthereumDataType.ADDRESS, EthereumDataType.BYTES):
+        await confirm_blob(
+            ctx,
+            "show_data",
+            title=title,
+            data=data,
+            description=description,
+            br_code=ButtonRequestType.Other,
+        )
+    else:
+        await confirm_text(
+            ctx,
+            "show_data",
+            title=title,
+            data=data,
+            description=description,
+            br_code=ButtonRequestType.Other,
+        )
 
 
 async def should_we_show_struct(

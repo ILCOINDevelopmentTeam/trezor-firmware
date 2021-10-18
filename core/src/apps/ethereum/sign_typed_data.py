@@ -26,8 +26,7 @@ if False:
     from trezor.wire import Context
 
 
-# TODO: mypy issue below: Value of type variable "MsgIn" of function cannot be "EthereumSignTypedData"  [type-var]
-@with_keychain_from_path(*PATTERNS_ADDRESS)  # type: ignore
+@with_keychain_from_path(*PATTERNS_ADDRESS)
 async def sign_typed_data(
     ctx: Context, msg: EthereumSignTypedData, keychain: Keychain
 ) -> EthereumTypedDataSignature:
@@ -52,7 +51,7 @@ async def generate_typed_data_hash(
     ctx: Context, primary_type: str, metamask_v4_compat: bool = True
 ) -> bytes:
     """
-    Generates typed data hash according to EIP-712 specification
+    Generate typed data hash according to EIP-712 specification
     https://eips.ethereum.org/EIPS/eip-712#specification
 
     metamask_v4_compat - a flag that enables compatibility with MetaMask's signTypedData_v4 method
