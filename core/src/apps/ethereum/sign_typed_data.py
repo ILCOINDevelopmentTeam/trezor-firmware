@@ -11,8 +11,14 @@ from apps.common import paths
 
 from . import address
 from .keychain import PATTERNS_ADDRESS, with_keychain_from_path
-from .layout import confirm_hash, should_we_show_domain, should_we_show_message
-from .typed_data import StructHasher, keccak256, validate_field_type
+from .typed_data import (
+    StructHasher,
+    confirm_hash,
+    keccak256,
+    should_we_show_domain,
+    should_we_show_struct,
+    validate_field_type,
+)
 
 if False:
     from typing import Dict
@@ -66,11 +72,11 @@ async def generate_typed_data_hash(
         primary_type="EIP712Domain",
         member_path=[0],
         show_data=show_domain,
-        parent_objects=["EIP712"],
+        parent_objects=[],
     )
 
-    show_message = await should_we_show_message(
-        ctx, primary_type, types[primary_type].members
+    show_message = await should_we_show_struct(
+        ctx, primary_type, ["data"], types[primary_type].members
     )
     message_hash = await struct_hasher.hash_struct(
         primary_type=primary_type,

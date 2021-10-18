@@ -1,16 +1,20 @@
 from ubinascii import hexlify
 
-from trezor import wire
+from trezor import ui, wire
 from trezor.crypto.hashlib import sha3_256
 from trezor.enums import ButtonRequestType, EthereumDataType
 from trezor.messages import (
     EthereumFieldType,
+    EthereumStructMember,
     EthereumTypedDataStructAck,
     EthereumTypedDataValueAck,
     EthereumTypedDataValueRequest,
 )
+from trezor.ui.components.tt.text import Text
 from trezor.ui.layouts import confirm_blob, confirm_text
 from trezor.utils import HashWriter
+
+from apps.common.confirm import confirm
 
 from .address import address_from_bytes
 
@@ -20,9 +24,7 @@ if False:
 
 
 # TODO: the functions' docstrings need to be updated to match current situation
-# TODO: address numerous mypy issues, mostly about EthereumFieldType's optional attributes
 # TODO: get better layouts
-# TODO: create the UI logic to ask for showing details
 # TODO: create unit tests for hashing class
 
 # Maximum data size we support
@@ -105,11 +107,23 @@ class StructHasher:
             if data_type == EthereumDataType.STRUCT:
                 assert member.type.struct_name is not None  # validate_field_type
                 struct_name = member.type.struct_name
+                current_parent_objects = parent_objects + [field_name]
+
+                if show_data:
+                    show_struct = await should_we_show_struct(
+                        ctx=self.ctx,
+                        primary_type=struct_name,
+                        parent_objects=current_parent_objects,
+                        data_members=self.types[struct_name].members,
+                    )
+                else:
+                    show_struct = False
+
                 res = await self.hash_struct(
                     primary_type=struct_name,
                     member_path=member_value_path,
-                    show_data=show_data,
-                    parent_objects=parent_objects + [field_name],
+                    show_data=show_struct,
+                    parent_objects=current_parent_objects,
                 )
                 w.extend(res)
             elif data_type == EthereumDataType.ARRAY:
@@ -121,6 +135,19 @@ class StructHasher:
 
                 assert member.type.entry_type is not None  # validate_field_type
                 entry_type = member.type.entry_type
+                current_parent_objects = parent_objects + [field_name]
+
+                if show_data:
+                    show_array = await should_we_show_array(
+                        ctx=self.ctx,
+                        name=member.name,
+                        parent_objects=current_parent_objects,
+                        data_type=get_type_name(entry_type),
+                        size=array_size,
+                    )
+                else:
+                    show_array = False
+
                 arr_w = get_hash_writer()
                 for i in range(array_size):
                     el_member_path = member_value_path + [i]
@@ -137,8 +164,8 @@ class StructHasher:
                             res = await self.hash_struct(
                                 primary_type=struct_name,
                                 member_path=el_member_path,
-                                show_data=show_data,
-                                parent_objects=parent_objects + [field_name],
+                                show_data=show_array,
+                                parent_objects=current_parent_objects,
                             )
                             arr_w.extend(res)
                         else:
@@ -146,13 +173,13 @@ class StructHasher:
                                 w=arr_w,
                                 primary_type=struct_name,
                                 member_path=el_member_path,
-                                show_data=show_data,
-                                parent_objects=parent_objects + [field_name],
+                                show_data=show_array,
+                                parent_objects=current_parent_objects,
                             )
                     else:
                         value = await get_value(self.ctx, entry_type, el_member_path)
                         encode_field(arr_w, entry_type, value)
-                        if show_data:
+                        if show_array:
                             await show_data_to_user(
                                 ctx=self.ctx,
                                 name=field_name,
@@ -187,7 +214,10 @@ async def show_data_to_user(
     array_index: Optional[int] = None,
 ) -> None:
     type_name = get_type_name(field)
-    title = f"{'.'.join(parent_objects)} - {primary_type}"
+    if parent_objects:
+        title = f"{'.'.join(parent_objects)} - {primary_type}"
+    else:
+        title = primary_type
 
     if array_index is not None:
         array_str = f"[{array_index}]"
@@ -530,3 +560,93 @@ async def get_value(
     validate_value(field=field, value=value)
 
     return value
+
+
+async def should_we_show_struct(
+    ctx: Context,
+    primary_type: str,
+    parent_objects: Iterable[str],
+    data_members: List[EthereumStructMember],
+) -> bool:
+    title = f"{'.'.join(parent_objects)} - {primary_type}"
+    page = Text(title, ui.ICON_SEND, icon_color=ui.GREEN)
+
+    # We have limited screen space, so showing only a preview when having lot of fields
+    MAX_FIELDS_TO_SHOW = 3
+    fields_amount = len(data_members)
+    if fields_amount > MAX_FIELDS_TO_SHOW:
+        for field in data_members[:MAX_FIELDS_TO_SHOW]:
+            page.bold(limit_str(field.name))
+        page.mono(f"...and {fields_amount - MAX_FIELDS_TO_SHOW} more.")
+    else:
+        for field in data_members:
+            page.bold(limit_str(field.name))
+
+    page.mono("View full struct?")
+
+    return await confirm(ctx, page, ButtonRequestType.Other)
+
+
+async def should_we_show_array(
+    ctx: Context,
+    name: str,
+    parent_objects: Iterable[str],
+    data_type: str,
+    size: int,
+) -> bool:
+    title = f"{'.'.join(parent_objects)} - {name}"
+    page = Text(title, ui.ICON_SEND, icon_color=ui.GREEN)
+
+    page.bold(limit_str(f"Type: {data_type}"))
+    page.bold(limit_str(f"Size: {size}"))
+    page.br()
+    page.mono("View full array?")
+
+    return await confirm(ctx, page, ButtonRequestType.Other)
+
+
+async def should_we_show_domain(
+    ctx: Context, domain_members: List[EthereumStructMember]
+) -> bool:
+    # Getting the name and version
+    name = b"unknown"
+    version = b"unknown"
+    for member_index, member in enumerate(domain_members):
+        member_value_path = [0] + [member_index]
+        member_name = member.name
+        if member_name == "name":
+            name = await get_value(ctx, member.type, member_value_path)
+        elif member_name == "version":
+            version = await get_value(ctx, member.type, member_value_path)
+
+    page = Text("Typed Data", ui.ICON_SEND, icon_color=ui.GREEN)
+
+    domain_name = decode_data(name, "string")
+    domain_version = decode_data(version, "string")
+
+    page.bold(f"Name: {domain_name}")
+    page.normal(f"Version: {domain_version}")
+    page.br()
+    page.mono("View EIP712Domain?")
+
+    return await confirm(ctx, page, ButtonRequestType.Other)
+
+
+async def confirm_hash(ctx: Context, primary_type: str, typed_data_hash: bytes) -> None:
+    data = "0x" + hexlify(typed_data_hash).decode()
+    await confirm_blob(
+        ctx,
+        "confirm_resulting_hash",
+        title="Sign typed data?",
+        description=f"Hashed {primary_type}:",
+        data=data,
+        icon=ui.ICON_CONFIG,
+        icon_color=ui.GREEN,
+    )
+
+
+def limit_str(s: str, limit: int = 16) -> str:
+    if len(s) <= limit + 2:
+        return s
+
+    return s[:limit] + ".."

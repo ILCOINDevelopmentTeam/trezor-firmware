@@ -2,9 +2,7 @@ from ubinascii import hexlify
 
 from trezor import ui
 from trezor.enums import ButtonRequestType
-from trezor.messages import EthereumStructMember
 from trezor.strings import format_amount
-from trezor.ui.components.tt.text import Text
 from trezor.ui.layouts import (
     confirm_address,
     confirm_amount,
@@ -13,76 +11,12 @@ from trezor.ui.layouts import (
 )
 from trezor.ui.layouts.tt.altcoin import confirm_total_ethereum
 
-from apps.common.confirm import confirm
-
 from . import networks, tokens
 from .address import address_from_bytes
-from .typed_data import decode_data, get_value
 
 if False:
-    from typing import Awaitable, List
+    from typing import Awaitable
     from trezor.wire import Context
-
-
-async def should_we_show_domain(
-    ctx: Context, domain_members: List[EthereumStructMember]
-) -> bool:
-    # Getting the name and version
-    name = b"unknown"
-    version = b"unknown"
-    for member_index, member in enumerate(domain_members):
-        member_value_path = [0] + [member_index]
-        member_name = member.name
-        if member_name == "name":
-            name = await get_value(ctx, member.type, member_value_path)
-        elif member_name == "version":
-            version = await get_value(ctx, member.type, member_value_path)
-
-    page = Text("Typed Data", ui.ICON_SEND, icon_color=ui.GREEN)
-
-    domain_name = decode_data(name, "string")
-    domain_version = decode_data(version, "string")
-
-    page.bold(f"Name: {domain_name}")
-    page.normal(f"Version: {domain_version}")
-    page.br()
-    page.mono("View EIP712Domain?")
-
-    return await confirm(ctx, page, ButtonRequestType.Other)
-
-
-async def should_we_show_message(
-    ctx: Context, primary_type: str, data_members: List[EthereumStructMember]
-) -> bool:
-    page = Text(primary_type, ui.ICON_SEND, icon_color=ui.GREEN)
-
-    # We have limited screen space, so showing only a preview when having lot of fields
-    MAX_FIELDS_TO_SHOW = 3
-    fields_amount = len(data_members)
-    if fields_amount > MAX_FIELDS_TO_SHOW:
-        for field in data_members[:MAX_FIELDS_TO_SHOW]:
-            page.bold(limit_str(field.name))
-        page.mono(f"...and {fields_amount - MAX_FIELDS_TO_SHOW} more.")
-    else:
-        for field in data_members:
-            page.bold(limit_str(field.name))
-
-    page.mono("View full message?")
-
-    return await confirm(ctx, page, ButtonRequestType.Other)
-
-
-async def confirm_hash(ctx: Context, primary_type: str, typed_data_hash: bytes) -> None:
-    data = "0x" + hexlify(typed_data_hash).decode()
-    await confirm_blob(
-        ctx,
-        "confirm_resulting_hash",
-        title="Sign typed data?",
-        description=f"Hashed {primary_type}:",
-        data=data,
-        icon=ui.ICON_CONFIG,
-        icon_color=ui.GREEN,
-    )
 
 
 def require_confirm_tx(
@@ -187,10 +121,3 @@ def format_ethereum_amount(
         decimals = 0
 
     return f"{format_amount(value, decimals)} {suffix}"
-
-
-def limit_str(s: str, limit: int = 16) -> str:
-    if len(s) <= limit + 2:
-        return s
-
-    return s[:limit] + ".."
