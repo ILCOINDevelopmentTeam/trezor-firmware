@@ -16,11 +16,15 @@ from .typed_data import StructHasher, keccak256, validate_field_type
 
 if False:
     from typing import Dict
+    from apps.common.keychain import Keychain
     from trezor.wire import Context
 
 
-@with_keychain_from_path(*PATTERNS_ADDRESS)
-async def sign_typed_data(ctx: Context, msg: EthereumSignTypedData, keychain):
+# TODO: mypy issue below: Value of type variable "MsgIn" of function cannot be "EthereumSignTypedData"  [type-var]
+@with_keychain_from_path(*PATTERNS_ADDRESS)  # type: ignore
+async def sign_typed_data(
+    ctx: Context, msg: EthereumSignTypedData, keychain: Keychain
+) -> EthereumTypedDataSignature:
     await paths.validate_path(ctx, keychain, msg.address_n)
 
     data_hash = await generate_typed_data_hash(
@@ -47,7 +51,7 @@ async def generate_typed_data_hash(
 
     metamask_v4_compat - a flag that enables compatibility with MetaMask's signTypedData_v4 method
     """
-    types = {}
+    types: Dict[str, EthereumTypedDataStructAck] = {}
     await collect_types(ctx, "EIP712Domain", types)
     await collect_types(ctx, primary_type, types)
 
@@ -95,4 +99,5 @@ async def collect_types(
             member.type.data_type == EthereumDataType.STRUCT
             and member.type.struct_name not in types
         ):
+            assert member.type.struct_name is not None  # validate_field_type
             await collect_types(ctx, member.type.struct_name, types)

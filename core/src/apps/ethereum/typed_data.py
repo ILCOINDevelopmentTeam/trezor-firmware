@@ -15,9 +15,15 @@ from trezor.utils import HashWriter
 from .address import address_from_bytes
 
 if False:
-    from typing import Dict, Iterable, List
+    from typing import Dict, Iterable, List, Optional
     from trezor.wire import Context
 
+
+# TODO: the functions' docstrings need to be updated to match current situation
+# TODO: address numerous mypy issues, mostly about EthereumFieldType's optional attributes
+# TODO: get better layouts
+# TODO: create the UI logic to ask for showing details
+# TODO: create unit tests for hashing class
 
 # Maximum data size we support
 MAX_VALUE_BYTE_SIZE = 1024
@@ -97,6 +103,7 @@ class StructHasher:
 
             # Arrays and structs need special recursive handling
             if data_type == EthereumDataType.STRUCT:
+                assert member.type.struct_name is not None  # validate_field_type
                 struct_name = member.type.struct_name
                 res = await self.hash_struct(
                     primary_type=struct_name,
@@ -112,12 +119,14 @@ class StructHasher:
                 else:
                     array_size = member.type.size
 
+                assert member.type.entry_type is not None  # validate_field_type
                 entry_type = member.type.entry_type
                 arr_w = get_hash_writer()
                 for i in range(array_size):
                     el_member_path = member_value_path + [i]
                     # TODO: we do not support arrays of arrays, check if we should
                     if entry_type.data_type == EthereumDataType.STRUCT:
+                        assert entry_type.struct_name is not None  # validate_field_type
                         struct_name = entry_type.struct_name
                         # Metamask V4 implementation has a bug, that causes the
                         # behavior of structs in array be different from SPEC
@@ -175,7 +184,7 @@ async def show_data_to_user(
     parent_objects: Iterable[str],
     primary_type: str,
     field: EthereumFieldType,
-    array_index: int = None,
+    array_index: Optional[int] = None,
 ) -> None:
     type_name = get_type_name(field)
     title = f"{'.'.join(parent_objects)} - {primary_type}"
@@ -189,18 +198,23 @@ async def show_data_to_user(
     data = decode_data(value, type_name)
 
     if field.data_type in (EthereumDataType.ADDRESS, EthereumDataType.BYTES):
-        func = confirm_blob
+        await confirm_blob(
+            ctx,
+            "show_data",
+            title=title,
+            data=data,
+            description=description,
+            br_code=ButtonRequestType.Other,
+        )
     else:
-        func = confirm_text
-
-    await func(
-        ctx,
-        "show_data",
-        title=title,
-        data=data,
-        description=description,
-        br_code=ButtonRequestType.Other,
-    )
+        await confirm_text(
+            ctx,
+            "show_data",
+            title=title,
+            data=data,
+            description=description,
+            br_code=ButtonRequestType.Other,
+        )
 
 
 def encode_field(
@@ -379,7 +393,7 @@ def encode_type(
     for type_name in primary_first_sorted_deps:
         members = types[type_name].members
         fields = ",".join([f"{get_type_name(m.type)} {m.name}" for m in members])
-        result += b"%s(%s)" % (type_name, fields)
+        result += f"{type_name}({fields})".encode()
 
     return result
 
@@ -407,15 +421,18 @@ def find_typed_dependencies(
     type_members = types[primary_type].members
     for member in type_members:
         if member.type.data_type == EthereumDataType.STRUCT:
+            assert member.type.struct_name is not None  # validate_field_type
             find_typed_dependencies(member.type.struct_name, types, results)
         elif member.type.data_type == EthereumDataType.ARRAY:
             # Finding the last entry_type and checking it for being struct
+            assert member.type.entry_type is not None  # validate_field_type
             entry_type = member.type.entry_type
             while True:
                 if entry_type.entry_type is None:
                     break
                 entry_type = entry_type.entry_type
             if entry_type.data_type == EthereumDataType.STRUCT:
+                assert entry_type.struct_name is not None  # validate_field_type
                 find_typed_dependencies(entry_type.struct_name, types, results)
 
 
@@ -434,8 +451,10 @@ def get_type_name(field: EthereumFieldType) -> str:
     }
 
     if data_type == EthereumDataType.STRUCT:
+        assert field.struct_name is not None  # validate_field_type
         return field.struct_name
     elif data_type == EthereumDataType.ARRAY:
+        assert field.entry_type is not None  # validate_field_type
         entry_type = field.entry_type
         type_name = get_type_name(entry_type)
         if size is None:
@@ -443,6 +462,7 @@ def get_type_name(field: EthereumFieldType) -> str:
         else:
             return f"{type_name}[{size}]"
     elif data_type in (EthereumDataType.UINT, EthereumDataType.INT):
+        assert size is not None  # validate_field_type
         return TYPE_TRANSLATION_DICT[data_type] + str(size * 8)
     elif data_type == EthereumDataType.BYTES:
         if size:

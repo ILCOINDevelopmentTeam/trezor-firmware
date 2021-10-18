@@ -16,7 +16,7 @@
 
 import json
 import re
-from typing import Any, Union, List
+from typing import Any, List, Union
 
 from . import exceptions, messages
 from .tools import expect, normalize_nfc, session

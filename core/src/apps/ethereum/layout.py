@@ -4,9 +4,6 @@ from trezor import ui
 from trezor.enums import ButtonRequestType
 from trezor.messages import EthereumStructMember
 from trezor.strings import format_amount
-
-# DO NOT use anything from trezor.ui.components (use trezor.ui.layouts)
-# Try to do it with layouts (confirm_properties function)
 from trezor.ui.components.tt.text import Text
 from trezor.ui.layouts import (
     confirm_address,
@@ -15,7 +12,6 @@ from trezor.ui.layouts import (
     confirm_output,
 )
 from trezor.ui.layouts.tt.altcoin import confirm_total_ethereum
-from trezor.utils import chunks
 
 from apps.common.confirm import confirm
 
@@ -76,9 +72,9 @@ async def should_we_show_message(
     return await confirm(ctx, page, ButtonRequestType.Other)
 
 
-async def confirm_hash(ctx: Context, primary_type: str, typed_data_hash: bytes):
+async def confirm_hash(ctx: Context, primary_type: str, typed_data_hash: bytes) -> None:
     data = "0x" + hexlify(typed_data_hash).decode()
-    return await confirm_blob(
+    await confirm_blob(
         ctx,
         "confirm_resulting_hash",
         title="Sign typed data?",
@@ -191,10 +187,6 @@ def format_ethereum_amount(
         decimals = 0
 
     return f"{format_amount(value, decimals)} {suffix}"
-
-
-def split_data(data, width: int = 18):
-    return chunks(data, width)
 
 
 def limit_str(s: str, limit: int = 16) -> str:

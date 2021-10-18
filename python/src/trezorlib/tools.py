@@ -80,7 +80,7 @@ __b58base = len(__b58chars)
 
 
 def b58encode(v):
-    """ encode v, which is a string of bytes, to base58."""
+    """encode v, which is a string of bytes, to base58."""
 
     long_value = 0
     for c in v:
@@ -106,7 +106,7 @@ def b58encode(v):
 
 
 def b58decode(v, length=None):
-    """ decode v into a string of len bytes."""
+    """decode v into a string of len bytes."""
     if isinstance(v, bytes):
         v = v.decode()
 

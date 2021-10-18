@@ -311,9 +311,13 @@ VECTORS = (  # data_to_sign, expected_sig, metamask_v4_compat
 
 @pytest.mark.setup_client(mnemonic=MNEMONIC)
 @pytest.mark.parametrize("data_to_sign, expected_sig, metamask_v4_compat", VECTORS)
-def test_ethereum_sign_typed_data(client, data_to_sign, expected_sig, metamask_v4_compat):
+def test_ethereum_sign_typed_data(
+    client, data_to_sign, expected_sig, metamask_v4_compat
+):
     with client:
         address_n = parse_path(PATH)
-        ret = ethereum.sign_typed_data(client, address_n, metamask_v4_compat, data_to_sign)
+        ret = ethereum.sign_typed_data(
+            client, address_n, metamask_v4_compat, data_to_sign
+        )
         assert ret.address == EXPECTED_ADDRESS
         assert f"0x{ret.signature.hex()}" == expected_sig
