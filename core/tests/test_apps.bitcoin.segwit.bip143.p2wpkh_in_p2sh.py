@@ -42,15 +42,15 @@ class TestSegwitBip143(unittest.TestCase):
     def test_bip143_prevouts(self):
         coin = coins.by_name(self.tx.coin_name)
         bip143 = Bip143Hash()
-        bip143.add_input(self.inp1)
+        bip143.add_input(self.inp1, b"")
         prevouts_hash = get_tx_hash(bip143.h_prevouts, double=coin.sign_hash_double)
         self.assertEqual(hexlify(prevouts_hash), b'b0287b4a252ac05af83d2dcef00ba313af78a3e9c329afa216eb3aa2a7b4613a')
 
     def test_bip143_sequence(self):
         coin = coins.by_name(self.tx.coin_name)
         bip143 = Bip143Hash()
-        bip143.add_input(self.inp1)
-        sequence_hash = get_tx_hash(bip143.h_sequence, double=coin.sign_hash_double)
+        bip143.add_input(self.inp1, b"")
+        sequence_hash = get_tx_hash(bip143.h_sequences, double=coin.sign_hash_double)
         self.assertEqual(hexlify(sequence_hash), b'18606b350cd8bf565266bc352f0caddcf01e8fa789dd8a15386327cf8cabe198')
 
     def test_bip143_outputs(self):
@@ -70,7 +70,7 @@ class TestSegwitBip143(unittest.TestCase):
         seed = bip39.seed('alcohol woman abuse must during monitor noble actual mixed trade anger aisle', '')
         coin = coins.by_name(self.tx.coin_name)
         bip143 = Bip143Hash()
-        bip143.add_input(self.inp1)
+        bip143.add_input(self.inp1, b"")
         for txo in [self.out1, self.out2]:
             script_pubkey = output_derive_script(txo.address, coin)
             txo_bin = PrevOutput(amount=txo.amount, script_pubkey=script_pubkey)
@@ -80,7 +80,7 @@ class TestSegwitBip143(unittest.TestCase):
         node = keychain.derive(self.inp1.address_n)
 
         # test data public key hash
-        result = bip143.preimage_hash(self.inp1, [node.public_key()], 1, self.tx, coin, SIGHASH_ALL)
+        result = bip143.preimage_hash(0, self.inp1, [node.public_key()], 1, self.tx, coin, SIGHASH_ALL)
         self.assertEqual(hexlify(result), b'6e28aca7041720995d4acf59bbda64eef5d6f23723d23f2e994757546674bbd9')
 
 

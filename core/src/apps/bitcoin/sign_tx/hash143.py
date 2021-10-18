@@ -1,16 +1,18 @@
 from trezor.crypto.hashlib import sha256
+from trezor.enums import InputScriptType
 from trezor.messages import PrevTx, SignTx, TxInput, TxOutput
 from trezor.utils import HashWriter
 
 from apps.common import coininfo
 
 from .. import scripts, writers
+from ..common import tagged_hashwriter
 
 if False:
     from typing import Protocol, Sequence
 
     class Hash143(Protocol):
-        def add_input(self, txi: TxInput) -> None:
+        def add_input(self, txi: TxInput, script_pubkey: bytes) -> None:
             ...
 
         def add_output(self, txo: TxOutput, script_pubkey: bytes) -> None:
@@ -18,6 +20,7 @@ if False:
 
         def preimage_hash(
             self,
+            i: int,
             txi: TxInput,
             public_keys: Sequence[bytes | memoryview],
             threshold: int,
@@ -32,20 +35,39 @@ if False:
 class Bip143Hash:
     def __init__(self) -> None:
         self.h_prevouts = HashWriter(sha256())
-        self.h_sequence = HashWriter(sha256())
+        self.h_amounts = HashWriter(sha256())
+        self.h_scriptpubkeys = HashWriter(sha256())
+        self.h_sequences = HashWriter(sha256())
         self.h_outputs = HashWriter(sha256())
 
-    def add_input(self, txi: TxInput) -> None:
+    def add_input(self, txi: TxInput, script_pubkey: bytes) -> None:
         writers.write_bytes_reversed(
             self.h_prevouts, txi.prev_hash, writers.TX_HASH_SIZE
         )
         writers.write_uint32(self.h_prevouts, txi.prev_index)
-        writers.write_uint32(self.h_sequence, txi.sequence)
+        writers.write_uint64(self.h_amounts, txi.amount)
+        writers.write_bytes_prefixed(self.h_scriptpubkeys, script_pubkey)
+        writers.write_uint32(self.h_sequences, txi.sequence)
 
     def add_output(self, txo: TxOutput, script_pubkey: bytes) -> None:
         writers.write_tx_output(self.h_outputs, txo, script_pubkey)
 
     def preimage_hash(
+        self,
+        i: int,
+        txi: TxInput,
+        public_keys: Sequence[bytes | memoryview],
+        threshold: int,
+        tx: SignTx | PrevTx,
+        coin: coininfo.CoinInfo,
+        sighash_type: int,
+    ) -> bytes:
+        if txi.script_type == InputScriptType.SPENDTAPROOT:
+            return self.bip341_hash(i, tx, sighash_type)
+        else:
+            return self.bip143_hash(txi, public_keys, threshold, tx, coin, sighash_type)
+
+    def bip143_hash(
         self,
         txi: TxInput,
         public_keys: Sequence[bytes | memoryview],
@@ -67,7 +89,7 @@ class Bip143Hash:
 
         # hashSequence
         sequence_hash = writers.get_tx_hash(
-            self.h_sequence, double=coin.sign_hash_double
+            self.h_sequences, double=coin.sign_hash_double
         )
         writers.write_bytes_fixed(h_preimage, sequence_hash, writers.TX_HASH_SIZE)
 
@@ -97,3 +119,56 @@ class Bip143Hash:
         writers.write_uint32(h_preimage, sighash_type)
 
         return writers.get_tx_hash(h_preimage, double=coin.sign_hash_double)
+
+    def bip341_hash(
+        self,
+        i: int,
+        tx: SignTx | PrevTx,
+        sighash_type: int,
+    ) -> bytes:
+        h_sigmsg = tagged_hashwriter(b"TapSighash")
+
+        # sighash epoch 0
+        writers.write_uint8(h_sigmsg, 0)
+
+        # nHashType
+        writers.write_uint8(h_sigmsg, sighash_type & 0xFF)
+
+        # nVersion
+        writers.write_uint32(h_sigmsg, tx.version)
+
+        # nLockTime
+        writers.write_uint32(h_sigmsg, tx.lock_time)
+
+        # sha_prevouts
+        writers.write_bytes_fixed(
+            h_sigmsg, self.h_prevouts.get_digest(), writers.TX_HASH_SIZE
+        )
+
+        # sha_amounts
+        writers.write_bytes_fixed(
+            h_sigmsg, self.h_amounts.get_digest(), writers.TX_HASH_SIZE
+        )
+
+        # sha_scriptpubkeys
+        writers.write_bytes_fixed(
+            h_sigmsg, self.h_scriptpubkeys.get_digest(), writers.TX_HASH_SIZE
+        )
+
+        # sha_sequences
+        writers.write_bytes_fixed(
+            h_sigmsg, self.h_sequences.get_digest(), writers.TX_HASH_SIZE
+        )
+
+        # sha_outputs
+        writers.write_bytes_fixed(
+            h_sigmsg, self.h_outputs.get_digest(), writers.TX_HASH_SIZE
+        )
+
+        # spend_type 0 (no tapscript message extension, no annex)
+        writers.write_uint8(h_sigmsg, 0)
+
+        # input_index
+        writers.write_uint32(h_sigmsg, i)
+
+        return h_sigmsg.get_digest()

@@ -51,6 +51,7 @@ class Bitcoinlike(Bitcoin):
     ) -> bytes:
         if self.coin.force_bip143:
             return tx_info.hash143.preimage_hash(
+                i,
                 txi,
                 public_keys,
                 threshold,

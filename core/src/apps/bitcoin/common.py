@@ -15,6 +15,10 @@ if False:
 
 BITCOIN_NAMES = ("Bitcoin", "Regtest", "Testnet")
 
+# Signature hash type with the same semantics as the SIGHASH_ALL, but instead
+# of having to include the byte in the signature, it is implied.
+SIGHASH_ALL_TAPROOT = const(0x00)
+
 # Default signature hash type in Bitcoin which signs all inputs and all outputs of the transaction.
 SIGHASH_ALL = const(0x01)
 
@@ -49,6 +53,7 @@ CHANGE_OUTPUT_SCRIPT_TYPES = tuple(CHANGE_OUTPUT_TO_INPUT_SCRIPT_TYPES.keys())
 SEGWIT_INPUT_SCRIPT_TYPES = (
     InputScriptType.SPENDP2SHWITNESS,
     InputScriptType.SPENDWITNESS,
+    InputScriptType.SPENDTAPROOT,
 )
 
 SEGWIT_OUTPUT_SCRIPT_TYPES = (

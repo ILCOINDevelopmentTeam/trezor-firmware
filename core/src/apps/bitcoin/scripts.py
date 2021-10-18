@@ -241,6 +241,28 @@ def output_script_native_segwit(witver: int, witprog: bytes) -> bytearray:
     return w
 
 
+def parse_output_script_p2tr(script_pubkey: bytes) -> memoryview:
+    # 51 20 <32-byte-taproot-output-key>
+    try:
+        r = utils.BufferReader(script_pubkey)
+
+        if r.get() != 0x51:
+            # P2TR should be SegWit version 1 (OP_PUSH1)
+            raise ValueError
+
+        if r.get() != 32:
+            # taproot output key should be 32 bytes
+            raise ValueError
+
+        pubkey = r.read_memoryview(32)
+        if r.remaining_count():
+            raise ValueError
+    except (ValueError, EOFError):
+        raise wire.DataError("Invalid scriptPubKey.")
+
+    return pubkey
+
+
 # SegWit: P2WPKH nested in P2SH
 # ===
 # https://github.com/bitcoin/bips/blob/master/bip-0141.mediawiki#witness-program
@@ -380,6 +402,39 @@ def parse_witness_multisig(
         raise wire.DataError("Invalid witness.")
 
     return script, signatures
+
+
+# Taproot: Witness getters
+# ===
+
+
+def write_witness_p2tr(w: Writer, signature: bytes, hash_type: int) -> None:
+    # Taproot key path spending without annex.
+    write_bitcoin_varint(w, 0x01)  # num of segwit items
+    write_signature_prefixed(w, signature, hash_type)
+
+
+def parse_witness_p2tr(witness: bytes) -> tuple[memoryview, int]:
+    try:
+        r = utils.BufferReader(witness)
+
+        if r.get() != 1:
+            # Only Taproot key path spending without annex is supported.
+            raise ValueError
+
+        n = read_bitcoin_varint(r)
+        if n not in (64, 65):
+            raise ValueError
+
+        signature = r.read_memoryview(64)
+        hash_type = r.get() if n == 65 else common.SIGHASH_ALL_TAPROOT
+
+        if r.remaining_count():
+            raise ValueError
+    except (ValueError, EOFError):
+        raise wire.DataError("Invalid witness.")
+
+    return signature, hash_type
 
 
 # Multisig
@@ -576,7 +631,8 @@ def read_bip322_signature_proof(r: utils.BufferReader) -> tuple[memoryview, memo
 def write_signature_prefixed(w: Writer, signature: bytes, hash_type: int) -> None:
     write_bitcoin_varint(w, len(signature) + 1)
     write_bytes_unchecked(w, signature)
-    w.append(hash_type)
+    if hash_type != common.SIGHASH_ALL_TAPROOT:
+        w.append(hash_type)
 
 
 def append_signature(w: Writer, signature: bytes, hash_type: int) -> None:

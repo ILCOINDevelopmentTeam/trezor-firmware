@@ -39,7 +39,7 @@ class Zip243Hash:
         self.h_sequence = HashWriter(blake2b(outlen=32, personal=b"ZcashSequencHash"))
         self.h_outputs = HashWriter(blake2b(outlen=32, personal=b"ZcashOutputsHash"))
 
-    def add_input(self, txi: TxInput) -> None:
+    def add_input(self, txi: TxInput, script_pubkey: bytes) -> None:
         write_bytes_reversed(self.h_prevouts, txi.prev_hash, TX_HASH_SIZE)
         write_uint32(self.h_prevouts, txi.prev_index)
         write_uint32(self.h_sequence, txi.sequence)
@@ -49,6 +49,7 @@ class Zip243Hash:
 
     def preimage_hash(
         self,
+        i: int,
         txi: TxInput,
         public_keys: Sequence[bytes | memoryview],
         threshold: int,
@@ -145,6 +146,7 @@ class Zcashlike(Bitcoinlike):
         tx_hash: bytes | None = None,
     ) -> bytes:
         return tx_info.hash143.preimage_hash(
+            0,
             txi,
             public_keys,
             threshold,
