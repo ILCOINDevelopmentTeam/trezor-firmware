@@ -111,14 +111,15 @@ if EVERYTHING:
 
 # libsecp256k1-zkp
 if FEATURE_FLAGS["SECP256K1_ZKP"]:
-    CCFLAGS_MOD += '-DSECP256K1_CONTEXT_SIZE=8416 '
-    CCFLAGS_MOD += '-DUSE_SECP256K1_ZKP '
     CPPPATH_MOD += [
         'vendor/secp256k1-zkp',
         'vendor/secp256k1-zkp/src',
         'vendor/secp256k1-zkp/include',
     ]
     CPPDEFINES_MOD += [
+        'USE_SECP256K1_ZKP',
+        'USE_SECP256K1_ZKP_ECDSA',
+        ('SECP256K1_CONTEXT_SIZE', '8416'),
         'SECP256K1_BUILD',
         'USE_ASM_ARM',
         'USE_NUM_NONE',
@@ -145,7 +146,6 @@ if FEATURE_FLAGS["SECP256K1_ZKP"]:
         'vendor/trezor-crypto/zkp_ecdsa.c',
         'vendor/trezor-crypto/zkp_schnorr.c',
     ]
-    CCFLAGS_MOD += '-DUSE_SECP256K1_ZKP_ECDSA '
 
 # modtrezorio
 SOURCE_MOD += [
