@@ -50,7 +50,9 @@
 #include "sdcard.h"
 #include "supervise.h"
 #include "touch.h"
+#ifdef USE_SECP256K1_ZKP
 #include "zkp_context.h"
+#endif
 
 int main(void) {
   random_delays_init();
@@ -70,7 +72,9 @@ int main(void) {
   enable_systemview();
 #endif
 
+#ifdef USE_SECP256K1_ZKP
   zkp_context_init();
+#endif
 
 #if TREZOR_MODEL == T
 #if PRODUCTION
