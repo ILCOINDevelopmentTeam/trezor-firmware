@@ -309,6 +309,7 @@ VECTORS = (  # data_to_sign, expected_sig, metamask_v4_compat
 )
 
 
+@pytest.mark.skip_t1
 @pytest.mark.setup_client(mnemonic=MNEMONIC)
 @pytest.mark.parametrize("data_to_sign, expected_sig, metamask_v4_compat", VECTORS)
 def test_ethereum_sign_typed_data(

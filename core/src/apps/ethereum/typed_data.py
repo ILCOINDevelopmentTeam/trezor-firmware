@@ -24,7 +24,6 @@ if False:
 
 
 # TODO: get better layouts
-# TODO: create unit tests for hashing class
 
 # Maximum data size we support
 MAX_VALUE_BYTE_SIZE = 1024
