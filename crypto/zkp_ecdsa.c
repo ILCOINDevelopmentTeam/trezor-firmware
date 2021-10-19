@@ -1,3 +1,25 @@
+/**
+ * Copyright (c) SatoshiLabs
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining
+ * a copy of this software and associated documentation files (the "Software"),
+ * to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
+ * and/or sell copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included
+ * in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+ * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES
+ * OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
+ */
+
 #include <assert.h>
 #include <stdbool.h>
 #include <string.h>
@@ -13,10 +35,15 @@
 
 #include "zkp_ecdsa.h"
 
+static bool is_zero_digest(const uint8_t *digest) {
+  const uint8_t zeroes[32] = {0};
+  return memcmp(digest, zeroes, 32) == 0;
+}
+
 // ECDSA compressed public key derivation
 // curve has to be &secp256k1
 // private_key_bytes has 32 bytes
-// public_key_bytes has 32 bytes
+// public_key_bytes has 33 bytes
 void zkp_ecdsa_get_public_key33(const ecdsa_curve *curve,
                                 const uint8_t *private_key_bytes,
                                 uint8_t *public_key_bytes) {
@@ -26,13 +53,13 @@ void zkp_ecdsa_get_public_key33(const ecdsa_curve *curve,
   secp256k1_pubkey public_key = {0};
 
   if (result == 0) {
-    secp256k1_context *context_writeable = zkp_context_acquire_writeable();
-    secp256k1_context_writeable_randomize(context_writeable);
-    if (secp256k1_ec_pubkey_create(context_writeable, &public_key,
+    secp256k1_context *context_writable = zkp_context_acquire_writable();
+    secp256k1_context_writable_randomize(context_writable);
+    if (secp256k1_ec_pubkey_create(context_writable, &public_key,
                                    private_key_bytes) != 1) {
       result = 1;
     }
-    zkp_context_release_writeable();
+    zkp_context_release_writable();
   }
 
   if (result == 0) {
@@ -64,13 +91,13 @@ void zkp_ecdsa_get_public_key65(const ecdsa_curve *curve,
   secp256k1_pubkey public_key = {0};
 
   if (result == 0) {
-    secp256k1_context *context_writeable = zkp_context_acquire_writeable();
-    secp256k1_context_writeable_randomize(context_writeable);
-    if (secp256k1_ec_pubkey_create(context_writeable, &public_key,
+    secp256k1_context *context_writable = zkp_context_acquire_writable();
+    secp256k1_context_writable_randomize(context_writable);
+    if (secp256k1_ec_pubkey_create(context_writable, &public_key,
                                    private_key_bytes) != 1) {
       result = 1;
     }
-    zkp_context_release_writeable();
+    zkp_context_release_writable();
   }
 
   if (result == 0) {
@@ -96,6 +123,7 @@ void zkp_ecdsa_get_public_key65(const ecdsa_curve *curve,
 // signature_bytes has 64 bytes
 // pby is one byte
 // is_canonical has to be NULL
+// returns 0 on success
 int zkp_ecdsa_sign_digest(
     const ecdsa_curve *curve, const uint8_t *private_key_bytes,
     const uint8_t *digest, uint8_t *signature_bytes, uint8_t *pby,
@@ -104,17 +132,27 @@ int zkp_ecdsa_sign_digest(
   assert(is_canonical == NULL);
   int result = 0;
 
+  if (result == 0) {
+    if (is_zero_digest(digest)) {
+      // The probability of the digest being all-zero by chance is
+      // infinitesimal, so this is most likely an indication of a bug.
+      // Furthermore, the signature has no value, because in this case it can be
+      // easily forged for any public key, see zkp_ecdsa_verify_digest().
+      result = 1;
+    }
+  }
+
   secp256k1_ecdsa_recoverable_signature recoverable_signature = {0};
 
   if (result == 0) {
-    secp256k1_context *ctx_writeable = zkp_context_acquire_writeable();
-    secp256k1_context_writeable_randomize(ctx_writeable);
-    if (secp256k1_ecdsa_sign_recoverable(ctx_writeable, &recoverable_signature,
+    secp256k1_context *ctx_writable = zkp_context_acquire_writable();
+    secp256k1_context_writable_randomize(ctx_writable);
+    if (secp256k1_ecdsa_sign_recoverable(ctx_writable, &recoverable_signature,
                                          digest, private_key_bytes, NULL,
                                          NULL) != 1) {
       result = 1;
     }
-    zkp_context_release_writeable();
+    zkp_context_release_writable();
   }
 
   if (result == 0) {
@@ -136,10 +174,11 @@ int zkp_ecdsa_sign_digest(
 }
 
 // ECDSA public key recovery
-// public_key_bytes has 64 bytes
+// public_key_bytes has 65 bytes
 // signature_bytes has 64 bytes
 // digest has 32 bytes
 // recid is 0, 1, 2 or 3
+// returns 0 on success
 int zkp_ecdsa_recover_pub_from_sig(const ecdsa_curve *curve,
                                    uint8_t *public_key_bytes,
                                    const uint8_t *signature_bytes,
@@ -184,16 +223,12 @@ int zkp_ecdsa_recover_pub_from_sig(const ecdsa_curve *curve,
   return result;
 }
 
-static bool is_zero_digest(const uint8_t *digest) {
-  const uint8_t zeroes[32] = {0};
-  return memcmp(digest, zeroes, 32) == 0;
-}
-
 // ECDSA verification
 // curve has to be &secp256k1
 // public_key_bytes has 33 or 65 bytes
 // signature_bytes has 64 bytes
 // digest has 32 bytes
+// returns 0 if verification succeeded
 int zkp_ecdsa_verify_digest(const ecdsa_curve *curve,
                             const uint8_t *public_key_bytes,
                             const uint8_t *signature_bytes,
@@ -215,6 +250,12 @@ int zkp_ecdsa_verify_digest(const ecdsa_curve *curve,
 
   if (result == 0) {
     if (is_zero_digest(digest)) {
+      // The digest was all-zero. The probability of this happening by chance is
+      // infinitesimal, but it could be induced by a fault injection. In this
+      // case the signature (r,s) can be forged by taking r := (t * Q).x mod n
+      // and s := r * t^-1 mod n for any t in [1, n-1]. We fail verification,
+      // because there is no guarantee that the signature was created by the
+      // owner of the private key.
       result = 3;
     }
   }
