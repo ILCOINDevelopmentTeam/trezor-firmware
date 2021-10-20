@@ -512,7 +512,8 @@ START_TEST(test_cardano_ledger_vector_1) {
       "trap season stove worth toward congress jaguar";
 
   mnemonic_to_seed(mnemonic, "", seed, NULL);
-  const int res = secret_from_seed_cardano_ledger(seed, sizeof(seed), cardano_secret);
+  const int res =
+      secret_from_seed_cardano_ledger(seed, sizeof(seed), cardano_secret);
   ck_assert_int_eq(res, 1);
   ck_assert_mem_eq(
       cardano_secret,
@@ -534,7 +535,8 @@ START_TEST(test_cardano_ledger_vector_2) {
       "gap lottery neglect address glow carry old business";
 
   mnemonic_to_seed(mnemonic, "", seed, NULL);
-  const int res = secret_from_seed_cardano_ledger(seed, sizeof(seed), cardano_secret);
+  const int res =
+      secret_from_seed_cardano_ledger(seed, sizeof(seed), cardano_secret);
   ck_assert_int_eq(res, 1);
   ck_assert_mem_eq(
       cardano_secret,
@@ -556,7 +558,8 @@ START_TEST(test_cardano_ledger_vector_3) {
       "abandon abandon abandon abandon abandon abandon abandon art";
 
   mnemonic_to_seed(mnemonic, "foo", seed, NULL);
-  const int res = secret_from_seed_cardano_ledger(seed, sizeof(seed), cardano_secret);
+  const int res =
+      secret_from_seed_cardano_ledger(seed, sizeof(seed), cardano_secret);
   ck_assert_int_eq(res, 1);
   ck_assert_mem_eq(
       cardano_secret,
