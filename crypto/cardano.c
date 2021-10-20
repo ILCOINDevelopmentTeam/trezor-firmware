@@ -40,7 +40,7 @@
 #define CARDANO_MAX_NODE_DEPTH 1048576
 
 const curve_info ed25519_cardano_info = {
-    .bip32_name = "ed25519 cardano seed",
+    .bip32_name = ED25519_CARDANO_NAME,
     .params = NULL,
     .hasher_base58 = HASHER_SHA2D,
     .hasher_sign = HASHER_SHA2D,
@@ -187,6 +187,55 @@ int secret_from_seed_cardano_slip23(const uint8_t *seed, int seed_len,
 
   memzero(I, sizeof(I));
   memzero(&ctx, sizeof(ctx));
+  return 1;
+}
+
+// Derives the root Cardano secret from a BIP-32 master secret via the Ledger
+// derivation.
+int secret_from_seed_cardano_ledger(const uint8_t *seed, int seed_len,
+                                    uint8_t secret_out[CARDANO_SECRET_LENGTH]) {
+  static CONFIDENTIAL HDNode root;
+  static CONFIDENTIAL uint8_t chain_code[SHA256_DIGEST_LENGTH];
+  static CONFIDENTIAL uint8_t root_key[64];
+  static CONFIDENTIAL HMAC_SHA256_CTX ctx;
+
+  // STEP 1: derive a BIP-32 root key on the ed25519 curve
+  int res = hdnode_from_seed(seed, seed_len, ED25519_NAME, &root);
+  if (res != 1) {
+    return res;
+  }
+
+  // STEP 2: check that the resulting key does not have a particular bit set,
+  // otherwise hashRepeatedly()
+  while (root.private_key[31] & 0x20) {
+    memcpy(root_key, root.private_key, 32);
+    memcpy(root_key + 32, root.chain_code, 32);
+    res = hdnode_from_seed(root_key, 64, ED25519_NAME, &root);
+    if (res != 1) {
+      return res;
+    }
+  }
+
+  // STEP 3: calculate the chain code as a HMAC-SHA256 of "\x01" + seed,
+  // key is "ed25519 seed"
+  hmac_sha256_Init(&ctx, (const unsigned char *)ED25519_SEED_NAME,
+                   strlen(ED25519_SEED_NAME));
+  hmac_sha256_Update(&ctx, (const unsigned char *)"\x01", 1);
+  hmac_sha256_Update(&ctx, seed, seed_len);
+  hmac_sha256_Final(&ctx, chain_code);
+
+  // STEP 4: extract information into output
+  memcpy(secret_out, root.private_key, 32);
+  memcpy(secret_out + 32, root.chain_code, 32);
+  memcpy(secret_out + 64, chain_code, 32);
+
+  // STEP 5: tweak bits of the private key
+  cardano_ed25519_tweak_bits(secret_out);
+
+  memzero(&root, sizeof(root));
+  memzero(&ctx, sizeof(ctx));
+  memzero(root_key, sizeof(root_key));
+  memzero(chain_code, sizeof(chain_code));
   return 1;
 }
 
