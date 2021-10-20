@@ -10,16 +10,13 @@ from trezor.enums import EthereumDataType as EDT
 
 if not utils.BITCOIN_ONLY:
     from apps.ethereum.typed_data import (
-        encode_type,
-        hash_type,
         encode_field,
         validate_value,
         validate_field_type,
-        find_typed_dependencies,
         keccak256,
         get_type_name,
         decode_data,
-        StructHasher,
+        TypedDataEnvelope,
     )
 
 
@@ -118,12 +115,12 @@ def parse_type_n(type_name: str) -> int:
     Example: "uint256" -> 256
     """
     # STRANGE: "ImportError: no module named 're'" in Micropython?
-    buff = ""
+    buf = ""
     for char in reversed(type_name):
         if char.isdigit():
-            buff += char
+            buf += char
         else:
-            return int("".join(reversed(buff)))
+            return int("".join(reversed(buf)))
 
 
 def parse_array_n(type_name: str) -> Union[int, str]:
@@ -251,6 +248,14 @@ MESSAGE_VALUES_COMPLEX = [
     ]
 ]
 
+# Object for testing functionality not needing context
+# (Each test needs to assign EMPTY_ENVELOPE.types as needed)
+EMPTY_ENVELOPE = TypedDataEnvelope(
+    ctx=None,
+    primary_type="test",
+    metamask_v4_compat=True,
+)
+
 # TODO: validate it more by some third party app, like signing data by Metamask
 # ??? How to approach the testing ???
 # - we could copy the most important test cases testing important functionality
@@ -338,14 +343,15 @@ class TestEthereumSignTypedData(unittest.TestCase):
 
         for primary_type, data, types, expected in VECTORS:
             ctx = MockContext(data)
-            struct_hasher = StructHasher(
+            typed_data_envelope = TypedDataEnvelope(
                 ctx=ctx,
-                types=types,
+                primary_type=primary_type,
                 metamask_v4_compat=True,
             )
+            typed_data_envelope.types = types
 
             res = await_result(
-                struct_hasher.hash_struct(
+                typed_data_envelope.hash_struct(
                     primary_type=primary_type,
                     member_path=[0],
                     show_data=False,
@@ -377,15 +383,16 @@ class TestEthereumSignTypedData(unittest.TestCase):
         )
         for primary_type, data, types, expected in VECTORS:
             ctx = MockContext(data)
-            struct_hasher = StructHasher(
+            typed_data_envelope = TypedDataEnvelope(
                 ctx=ctx,
-                types=types,
+                primary_type=primary_type,
                 metamask_v4_compat=True,
             )
+            typed_data_envelope.types = types
 
             w = bytearray()
             await_result(
-                struct_hasher.get_and_encode_data(
+                typed_data_envelope.get_and_encode_data(
                     w=w,
                     primary_type=primary_type,
                     member_path=[0],
@@ -421,7 +428,8 @@ class TestEthereumSignTypedData(unittest.TestCase):
         )
 
         for primary_type, types, expected in VECTORS:
-            res = encode_type(primary_type=primary_type, types=types)
+            EMPTY_ENVELOPE.types = types
+            res = EMPTY_ENVELOPE.encode_type(primary_type=primary_type)
             self.assertEqual(res, expected)
 
     def test_hash_type(self):
@@ -443,7 +451,8 @@ class TestEthereumSignTypedData(unittest.TestCase):
 
         for primary_type, expected in VECTORS:
             w = bytearray()
-            hash_type(w=w, primary_type=primary_type, types=TYPES_BASIC)
+            EMPTY_ENVELOPE.types = TYPES_BASIC
+            EMPTY_ENVELOPE.hash_type(w=w, primary_type=primary_type)
             self.assertEqual(w, expected)
 
     def test_find_typed_dependencies(self):
@@ -465,34 +474,35 @@ class TestEthereumSignTypedData(unittest.TestCase):
         VECTORS = (  # primary_type, expected, types
             (
                 "EIP712Domain",
-                ["EIP712Domain"],
+                {"EIP712Domain"},
                 TYPES_BASIC
             ),
             (
                 "Person",
-                ["Person"],
+                {"Person"},
                 TYPES_BASIC
             ),
             (
                 "Mail",
-                ["Mail", "Person"],
+                {"Mail", "Person"},
                 TYPES_BASIC
             ),
             (
                 "MAIN",
-                ["MAIN", "SECONDARY", "TERNARY"],
+                {"MAIN", "SECONDARY", "TERNARY"},
                 types_dependency_only_as_array
             ),
             (
                 "UnexistingType",
-                [],
+                set(),
                 TYPES_BASIC
             ),
         )
 
         for primary_type, expected, types in VECTORS:
-            res = []
-            find_typed_dependencies(primary_type=primary_type, types=types, results=res)
+            res = set()
+            EMPTY_ENVELOPE.types = types
+            EMPTY_ENVELOPE.find_typed_dependencies(primary_type=primary_type, results=res)
             self.assertEqual(res, expected)
 
     def test_encode_field(self):
@@ -631,10 +641,12 @@ class TestEthereumSignTypedData(unittest.TestCase):
             (EFT(data_type=EDT.STRING, size=3)),
             (EFT(data_type=EDT.STRING, entry_type=ET)),
             (EFT(data_type=EDT.BOOL, struct_name="Person")),
+            (EFT(data_type=EDT.BOOL, size=1)),
             (EFT(data_type=EDT.BOOL, size=3)),
             (EFT(data_type=EDT.BOOL, entry_type=ET)),
             (EFT(data_type=EDT.ADDRESS, struct_name="Person")),
             (EFT(data_type=EDT.ADDRESS, size=3)),
+            (EFT(data_type=EDT.ADDRESS, size=20)),
             (EFT(data_type=EDT.ADDRESS, entry_type=ET)),
         )
         for invalid_field in VECTORS_INVALID:
@@ -650,6 +662,21 @@ class TestEthereumSignTypedData(unittest.TestCase):
                     entry_type=EFT(data_type=EDT.UINT, size=32),
                 ),
                 "uint256[]",
+            ),
+            (
+                EFT(
+                    data_type=EDT.ARRAY,
+                    size=None,
+                    entry_type=EFT(
+                        data_type=EDT.ARRAY,
+                        size=None,
+                        entry_type=EFT(
+                            data_type=EDT.BYTES,
+                            size=16
+                        ),
+                    )
+                ),
+                "bytes16[][]",
             ),
             (
                 EFT(

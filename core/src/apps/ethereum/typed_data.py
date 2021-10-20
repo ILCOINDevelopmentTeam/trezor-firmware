@@ -5,8 +5,8 @@ from trezor.crypto.hashlib import sha3_256
 from trezor.enums import ButtonRequestType, EthereumDataType
 from trezor.messages import (
     EthereumFieldType,
-    EthereumStructMember,
     EthereumTypedDataStructAck,
+    EthereumTypedDataStructRequest,
     EthereumTypedDataValueAck,
     EthereumTypedDataValueRequest,
 )
@@ -19,7 +19,7 @@ from apps.common.confirm import confirm
 from .address import address_from_bytes
 
 if False:
-    from typing import Dict, Iterable, List, Optional
+    from typing import Iterable, Optional
     from trezor.wire import Context
 
 
@@ -41,18 +41,39 @@ def keccak256(message: bytes) -> bytes:
     return h.get_digest()
 
 
-class StructHasher:
-    """Putting together the main hashing functionality."""
+class TypedDataEnvelope:
+    """Encapsulates the type information for the message being hashed and signed."""
 
     def __init__(
         self,
         ctx: Context,
-        types: Dict[str, EthereumTypedDataStructAck],
+        primary_type: str,
         metamask_v4_compat: bool,
     ) -> None:
         self.ctx = ctx
-        self.types = types
+        self.primary_type = primary_type
         self.metamask_v4_compat = metamask_v4_compat
+        self.types: dict[str, EthereumTypedDataStructAck] = {}
+
+    async def collect_types(self) -> None:
+        await self._collect_types("EIP712Domain")
+        await self._collect_types(self.primary_type)
+
+    async def _collect_types(self, type_name: str) -> None:
+        """
+        Recursively collects types from the client
+        """
+        req = EthereumTypedDataStructRequest(name=type_name)
+        current_type = await self.ctx.call(req, EthereumTypedDataStructAck)
+        self.types[type_name] = current_type
+        for member in current_type.members:
+            validate_field_type(member.type)
+            if (
+                member.type.data_type == EthereumDataType.STRUCT
+                and member.type.struct_name not in self.types
+            ):
+                assert member.type.struct_name is not None  # validate_field_type
+                await self._collect_types(member.type.struct_name)
 
     async def hash_struct(
         self,
@@ -63,7 +84,7 @@ class StructHasher:
     ) -> bytes:
         """Generate a hash representation of the whole struct."""
         w = get_hash_writer()
-        hash_type(w, primary_type, self.types)
+        self.hash_type(w, primary_type)
         await self.get_and_encode_data(
             w=w,
             primary_type=primary_type,
@@ -72,6 +93,56 @@ class StructHasher:
             parent_objects=parent_objects,
         )
         return w.get_digest()
+
+    def hash_type(self, w: HashWriter, primary_type: str) -> None:
+        """Create a representation of a type."""
+        result = keccak256(self.encode_type(primary_type))
+        w.extend(result)
+
+    def encode_type(self, primary_type: str) -> bytes:
+        """
+        SPEC:
+        The type of a struct is encoded as name ‖ "(" ‖ member₁ ‖ "," ‖ member₂ ‖ "," ‖ … ‖ memberₙ ")"
+        where each member is written as type ‖ " " ‖ name
+        If the struct type references other struct types (and these in turn reference even more struct types),
+        then the set of referenced struct types is collected, sorted by name and appended to the encoding.
+        """
+        result: list[str] = []
+
+        deps: set[str] = set()
+        self.find_typed_dependencies(primary_type, deps)
+        deps.remove(primary_type)
+        primary_first_sorted_deps = [primary_type] + sorted(deps)
+
+        for type_name in primary_first_sorted_deps:
+            members = self.types[type_name].members
+            fields = ",".join(f"{get_type_name(m.type)} {m.name}" for m in members)
+            result.append(f"{type_name}({fields})")
+
+        return "".join(result).encode()
+
+    def find_typed_dependencies(
+        self,
+        primary_type: str,
+        results: set,
+    ) -> None:
+        """Find all types within a type definition object."""
+        # We already have this type or it is not even a defined type
+        if (primary_type in results) or (primary_type not in self.types):
+            return
+
+        results.add(primary_type)
+
+        # Recursively adding all the children struct types,
+        # also looking into (even nested) arrays for them
+        for member in self.types[primary_type].members:
+            member_type = member.type
+            while member_type.data_type == EthereumDataType.ARRAY:
+                assert member_type.entry_type is not None  # validate_field_type
+                member_type = member_type.entry_type
+            if member_type.data_type == EthereumDataType.STRUCT:
+                assert member_type.struct_name is not None  # validate_field_type
+                self.find_typed_dependencies(member_type.struct_name, results)
 
     async def get_and_encode_data(
         self,
@@ -102,11 +173,11 @@ class StructHasher:
                 current_parent_objects = parent_objects + [field_name]
 
                 if show_data:
-                    show_struct = await should_we_show_struct(
+                    show_struct = await should_show_struct(
                         ctx=self.ctx,
                         primary_type=struct_name,
                         parent_objects=current_parent_objects,
-                        data_members=self.types[struct_name].members,
+                        typed_data_envelope=self,
                     )
                 else:
                     show_struct = False
@@ -130,7 +201,7 @@ class StructHasher:
                 current_parent_objects = parent_objects + [field_name]
 
                 if show_data:
-                    show_array = await should_we_show_array(
+                    show_array = await should_show_array(
                         ctx=self.ctx,
                         name=member.name,
                         parent_objects=current_parent_objects,
@@ -172,7 +243,7 @@ class StructHasher:
                         value = await get_value(self.ctx, entry_type, el_member_path)
                         encode_field(arr_w, entry_type, value)
                         if show_array:
-                            await show_data_to_user(
+                            await confirm_typed_value(
                                 ctx=self.ctx,
                                 name=field_name,
                                 value=value,
@@ -186,7 +257,7 @@ class StructHasher:
                 value = await get_value(self.ctx, member.type, member_value_path)
                 encode_field(w, member.type, value)
                 if show_data:
-                    await show_data_to_user(
+                    await confirm_typed_value(
                         ctx=self.ctx,
                         name=field_name,
                         value=value,
@@ -273,7 +344,7 @@ def validate_value(field: EthereumFieldType, value: bytes) -> None:
             raise wire.DataError("Invalid length")
     else:
         if len(value) > MAX_VALUE_BYTE_SIZE:
-            raise wire.DataError("Invalid length, bigger than {MAX_VALUE_BYTE_SIZE}")
+            raise wire.DataError(f"Invalid length, bigger than {MAX_VALUE_BYTE_SIZE}")
 
     # Specific tests for some data types
     if field.data_type == EthereumDataType.BOOL:
@@ -335,71 +406,6 @@ def validate_field_type(field: EthereumFieldType) -> None:
     ]:
         if field.size is not None:
             raise wire.DataError("Unexpected size in str/bool/addr")
-
-
-def hash_type(
-    w: HashWriter, primary_type: str, types: Dict[str, EthereumTypedDataStructAck]
-) -> None:
-    """Create a representation of a type."""
-    result = keccak256(encode_type(primary_type, types))
-    w.extend(result)
-
-
-def encode_type(
-    primary_type: str, types: Dict[str, EthereumTypedDataStructAck]
-) -> bytes:
-    """
-    SPEC:
-    The type of a struct is encoded as name ‖ "(" ‖ member₁ ‖ "," ‖ member₂ ‖ "," ‖ … ‖ memberₙ ")"
-    where each member is written as type ‖ " " ‖ name
-    If the struct type references other struct types (and these in turn reference even more struct types),
-    then the set of referenced struct types is collected, sorted by name and appended to the encoding.
-    """
-    result = b""
-
-    deps: List[str] = []
-    find_typed_dependencies(primary_type, types, deps)
-    non_primary_deps = [dep for dep in deps if dep != primary_type]
-    primary_first_sorted_deps = [primary_type] + sorted(non_primary_deps)
-
-    for type_name in primary_first_sorted_deps:
-        members = types[type_name].members
-        fields = ",".join([f"{get_type_name(m.type)} {m.name}" for m in members])
-        result += f"{type_name}({fields})".encode()
-
-    return result
-
-
-def find_typed_dependencies(
-    primary_type: str,
-    types: Dict[str, EthereumTypedDataStructAck],
-    results: list,
-) -> None:
-    """Find all types within a type definition object."""
-    # We already have this type or it is not even a defined type
-    if (primary_type in results) or (primary_type not in types):
-        return
-
-    results.append(primary_type)
-
-    # Recursively adding all the children struct types,
-    # also looking into (even nested) arrays for them
-    type_members = types[primary_type].members
-    for member in type_members:
-        if member.type.data_type == EthereumDataType.STRUCT:
-            assert member.type.struct_name is not None  # validate_field_type
-            find_typed_dependencies(member.type.struct_name, types, results)
-        elif member.type.data_type == EthereumDataType.ARRAY:
-            # Finding the last entry_type and checking it for being struct
-            assert member.type.entry_type is not None  # validate_field_type
-            entry_type = member.type.entry_type
-            while True:
-                if entry_type.entry_type is None:
-                    break
-                entry_type = entry_type.entry_type
-            if entry_type.data_type == EthereumDataType.STRUCT:
-                assert entry_type.struct_name is not None  # validate_field_type
-                find_typed_dependencies(entry_type.struct_name, types, results)
 
 
 def get_type_name(field: EthereumFieldType) -> str:
@@ -494,7 +500,7 @@ async def get_value(
     return value
 
 
-async def show_data_to_user(
+async def confirm_typed_value(
     ctx: Context,
     name: str,
     value: bytes,
@@ -537,12 +543,14 @@ async def show_data_to_user(
         )
 
 
-async def should_we_show_struct(
+async def should_show_struct(
     ctx: Context,
     primary_type: str,
     parent_objects: Iterable[str],
-    data_members: List[EthereumStructMember],
+    typed_data_envelope: TypedDataEnvelope,
 ) -> bool:
+    data_members = typed_data_envelope.types[primary_type].members
+
     title = f"{'.'.join(parent_objects)} - {primary_type}"
     page = Text(title, ui.ICON_SEND, icon_color=ui.GREEN)
 
@@ -562,7 +570,7 @@ async def should_we_show_struct(
     return await confirm(ctx, page, ButtonRequestType.Other)
 
 
-async def should_we_show_array(
+async def should_show_array(
     ctx: Context,
     name: str,
     parent_objects: Iterable[str],
@@ -580,18 +588,19 @@ async def should_we_show_array(
     return await confirm(ctx, page, ButtonRequestType.Other)
 
 
-async def should_we_show_domain(
-    ctx: Context, domain_members: List[EthereumStructMember]
+async def should_show_domain(
+    ctx: Context, typed_data_envelope: TypedDataEnvelope
 ) -> bool:
     # Getting the name and version
     name = b"unknown"
     version = b"unknown"
+
+    domain_members = typed_data_envelope.types["EIP712Domain"].members
     for member_index, member in enumerate(domain_members):
         member_value_path = [0] + [member_index]
-        member_name = member.name
-        if member_name == "name":
+        if member.name == "name":
             name = await get_value(ctx, member.type, member_value_path)
-        elif member_name == "version":
+        elif member.name == "version":
             version = await get_value(ctx, member.type, member_value_path)
 
     page = Text("Typed Data", ui.ICON_SEND, icon_color=ui.GREEN)
@@ -615,6 +624,7 @@ async def confirm_hash(ctx: Context, primary_type: str, typed_data_hash: bytes) 
         title="Sign typed data?",
         description=f"Hashed {primary_type}:",
         data=data,
+        hold=True,
         icon=ui.ICON_CONFIG,
         icon_color=ui.GREEN,
     )

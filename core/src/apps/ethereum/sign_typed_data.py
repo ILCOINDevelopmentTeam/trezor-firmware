@@ -1,27 +1,19 @@
 from trezor.crypto.curve import secp256k1
-from trezor.enums import EthereumDataType
-from trezor.messages import (
-    EthereumSignTypedData,
-    EthereumTypedDataSignature,
-    EthereumTypedDataStructAck,
-    EthereumTypedDataStructRequest,
-)
+from trezor.messages import EthereumSignTypedData, EthereumTypedDataSignature
 
 from apps.common import paths
 
 from . import address
 from .keychain import PATTERNS_ADDRESS, with_keychain_from_path
 from .typed_data import (
-    StructHasher,
+    TypedDataEnvelope,
     confirm_hash,
     keccak256,
-    should_we_show_domain,
-    should_we_show_struct,
-    validate_field_type,
+    should_show_domain,
+    should_show_struct,
 )
 
 if False:
-    from typing import Dict
     from apps.common.keychain import Keychain
     from trezor.wire import Context
 
@@ -56,28 +48,25 @@ async def generate_typed_data_hash(
 
     metamask_v4_compat - a flag that enables compatibility with MetaMask's signTypedData_v4 method
     """
-    types: Dict[str, EthereumTypedDataStructAck] = {}
-    await collect_types(ctx, "EIP712Domain", types)
-    await collect_types(ctx, primary_type, types)
-
-    struct_hasher = StructHasher(
+    typed_data_envelope = TypedDataEnvelope(
         ctx=ctx,
-        types=types,
+        primary_type=primary_type,
         metamask_v4_compat=metamask_v4_compat,
     )
+    await typed_data_envelope.collect_types()
 
-    show_domain = await should_we_show_domain(ctx, types["EIP712Domain"].members)
-    domain_separator = await struct_hasher.hash_struct(
+    show_domain = await should_show_domain(ctx, typed_data_envelope)
+    domain_separator = await typed_data_envelope.hash_struct(
         primary_type="EIP712Domain",
         member_path=[0],
         show_data=show_domain,
         parent_objects=[],
     )
 
-    show_message = await should_we_show_struct(
-        ctx, primary_type, ["data"], types[primary_type].members
+    show_message = await should_show_struct(
+        ctx, primary_type, ["data"], typed_data_envelope
     )
-    message_hash = await struct_hasher.hash_struct(
+    message_hash = await typed_data_envelope.hash_struct(
         primary_type=primary_type,
         member_path=[1],
         show_data=show_message,
@@ -87,22 +76,3 @@ async def generate_typed_data_hash(
     await confirm_hash(ctx, primary_type, message_hash)
 
     return keccak256(b"\x19" + b"\x01" + domain_separator + message_hash)
-
-
-async def collect_types(
-    ctx: Context, type_name: str, types: Dict[str, EthereumTypedDataStructAck]
-) -> None:
-    """
-    Recursively collects types from the client
-    """
-    req = EthereumTypedDataStructRequest(name=type_name)
-    current_type = await ctx.call(req, EthereumTypedDataStructAck)
-    types[type_name] = current_type
-    for member in current_type.members:
-        validate_field_type(member.type)
-        if (
-            member.type.data_type == EthereumDataType.STRUCT
-            and member.type.struct_name not in types
-        ):
-            assert member.type.struct_name is not None  # validate_field_type
-            await collect_types(ctx, member.type.struct_name, types)

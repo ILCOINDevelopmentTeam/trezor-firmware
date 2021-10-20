@@ -154,7 +154,6 @@ message EthereumSignTypedData {
 
 /**
  * Response: Device asks for type information about a struct.
- * @end
  * @next EthereumTypedDataStructAck
  */
 message EthereumTypedDataStructRequest {
@@ -198,7 +197,6 @@ message EthereumTypedDataStructAck {
 
 /**
  * Response: Device asks for data at the specific member path.
- * @end
  * @next EthereumTypedDataValueAck
  */
 message EthereumTypedDataValueRequest {

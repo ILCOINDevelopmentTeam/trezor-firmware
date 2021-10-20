@@ -509,6 +509,7 @@ async def confirm_blob(
     title: str,
     data: bytes | str,
     description: str | None = None,
+    hold: bool = False,
     br_code: ButtonRequestType = ButtonRequestType.Other,
     icon: str = ui.ICON_SEND,  # TODO cleanup @ redesign
     icon_color: int = ui.GREEN,  # TODO cleanup @ redesign
@@ -555,14 +556,16 @@ async def confirm_blob(
         else:
             per_line = MONO_HEX_PER_LINE
         text.mono(ui.FG, *chunks_intersperse(data_str, per_line))
-        content: ui.Layout = Confirm(text)
+        content: ui.Layout = HoldToConfirm(text) if hold else Confirm(text)
 
     else:
         para = []
         if description is not None:
             para.append((ui.NORMAL, description))
         para.extend((ui.MONO, line) for line in chunks(data_str, MONO_HEX_PER_LINE - 2))
-        content = paginate_paragraphs(para, title, icon, icon_color)
+        content = paginate_paragraphs(
+            para, title, icon, icon_color, confirm=HoldToConfirm if hold else Confirm
+        )
     await raise_if_cancelled(interact(ctx, content, br_type, br_code))
 
 

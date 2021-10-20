@@ -14,9 +14,8 @@
 # You should have received a copy of the License along with this library.
 # If not, see <https://www.gnu.org/licenses/lgpl-3.0.html>.
 
-import json
 import re
-from typing import Any, List, Union
+from typing import Any, Dict, List, Union
 
 from . import exceptions, messages
 from .tools import expect, normalize_nfc, session
@@ -31,37 +30,6 @@ def decode_hex(value: str) -> bytes:
         return bytes.fromhex(value[2:])
     else:
         return bytes.fromhex(value)
-
-
-def find_typed_dependencies(
-    primary_type: str, types: dict, results: list = None
-) -> list:
-    """Find all types within a type definition object."""
-    if results is None:
-        results = []
-
-    # When being an array, getting the part before the square brackets
-    if primary_type[-1] == "]":
-        primary_type = primary_type[: primary_type.index("[")]
-
-    # We already have this type or it is not even a defined type
-    if (primary_type in results) or (primary_type not in types):
-        return results
-
-    results.append(primary_type)
-    for field in types[primary_type]:
-        deps = find_typed_dependencies(field["type"], types, results)
-        for dep in deps:
-            if dep not in results:
-                results.append(dep)
-
-    return results
-
-
-def get_relevant_types(primary_type: str, types: dict) -> dict:
-    """Get a dict with all relevant type definitions for a certain type."""
-    all_deps = find_typed_dependencies(primary_type, types)
-    return {type_name: types[type_name] for type_name in all_deps}
 
 
 def sanitize_typed_data(data: dict) -> dict:
@@ -110,6 +78,9 @@ def get_field_type(type_name: str, types: dict) -> messages.EthereumFieldType:
         size = None if array_size == "dynamic" else array_size
         member_typename = typeof_array(type_name)
         entry_type = get_field_type(member_typename, types)
+        # Not supporting nested arrays currently
+        if entry_type.data_type == messages.EthereumDataType.ARRAY:
+            raise NotImplementedError("Nested arrays are not supported")
     elif type_name.startswith("uint"):
         data_type = messages.EthereumDataType.UINT
         size = get_byte_size_for_int_type(type_name)
@@ -142,7 +113,6 @@ def get_field_type(type_name: str, types: dict) -> messages.EthereumFieldType:
 
 def encode_data(value: Any, type_name: str) -> bytes:
     if type_name.startswith("bytes"):
-        # TODO: make sure this is correct, seems like hex is working in MM
         return decode_hex(value)
     elif type_name == "string":
         return value.encode()
@@ -154,8 +124,7 @@ def encode_data(value: Any, type_name: str) -> bytes:
     elif type_name == "bool":
         if not isinstance(value, bool):
             raise ValueError(f"Invalid bool value - {value}")
-        num = 1 if value is True else 0
-        return num.to_bytes(1, "big")
+        return int(value).to_bytes(1, "big")
     elif type_name == "address":
         return decode_hex(value)
 
@@ -272,12 +241,11 @@ def sign_message(client, n, message):
 
 
 @expect(messages.EthereumTypedDataSignature)
-def sign_typed_data(client, n: List[int], metamask_v4_compat: bool, data_string: str):
-    data = json.loads(data_string)
+def sign_typed_data(
+    client, n: List[int], metamask_v4_compat: bool, data: Dict[str, Any]
+):
     data = sanitize_typed_data(data)
-
-    domain_types = get_relevant_types("EIP712Domain", data["types"])
-    message_types = get_relevant_types(data["primaryType"], data["types"])
+    types = data["types"]
 
     request = messages.EthereumSignTypedData(
         address_n=n,
@@ -291,8 +259,8 @@ def sign_typed_data(client, n: List[int], metamask_v4_compat: bool, data_string:
         struct_name = response.name
 
         members = []
-        for field in data["types"][struct_name]:
-            field_type = get_field_type(field["type"], data["types"])
+        for field in types[struct_name]:
+            field_type = get_field_type(field["type"], types)
             struct_member = messages.EthereumStructMember(
                 type=field_type,
                 name=field["name"],
@@ -308,21 +276,19 @@ def sign_typed_data(client, n: List[int], metamask_v4_compat: bool, data_string:
         # Index 0 is for the domain data, 1 is for the actual message
         if root_index == 0:
             member_typename = "EIP712Domain"
-            member_types = domain_types
             member_data = data["domain"]
         elif root_index == 1:
             member_typename = data["primaryType"]
-            member_types = message_types
             member_data = data["message"]
         else:
             client.cancel()
-            raise ValueError("unknown root")
+            raise exceptions.TrezorException("Root index can only be 0 or 1")
 
         # It can be asking for a nested structure (the member path being [X, Y, Z, ...])
         # TODO: what to do when the value is missing (for example in recursive types)?
         for index in response.member_path[1:]:
             if isinstance(member_data, dict):
-                member_def = member_types[member_typename][index]
+                member_def = types[member_typename][index]
                 member_typename = member_def["type"]
                 member_data = member_data[member_def["name"]]
             elif isinstance(member_data, list):

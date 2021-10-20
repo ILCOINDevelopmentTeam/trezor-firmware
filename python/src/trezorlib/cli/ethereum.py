@@ -14,6 +14,7 @@
 # You should have received a copy of the License along with this library.
 # If not, see <https://www.gnu.org/licenses/lgpl-3.0.html>.
 
+import json
 import re
 import sys
 from decimal import Decimal
@@ -386,10 +387,8 @@ def sign_message(client, address, message):
 @cli.command()
 @click.option("-n", "--address", required=True, help=PATH_HELP)
 @click.option(
-    "--metamask-v4-compat",
-    type=bool,
+    "--metamask-v4-compat/--no-metamask-v4-compat",
     default=True,
-    required=False,
     help="Be compatible with Metamask's signTypedData_v4 implementation",
 )
 @click.argument("file", type=click.File("r"))
@@ -397,8 +396,8 @@ def sign_message(client, address, message):
 def sign_typed_data(client, address, metamask_v4_compat, file):
     """Sign typed data (EIP-712) with Ethereum address."""
     address_n = tools.parse_path(address)
-    content = file.read()
-    ret = ethereum.sign_typed_data(client, address_n, metamask_v4_compat, content)
+    data = json.loads(file.read())
+    ret = ethereum.sign_typed_data(client, address_n, metamask_v4_compat, data)
     output = {
         "address": ret.address,
         "signature": f"0x{ret.signature.hex()}",
