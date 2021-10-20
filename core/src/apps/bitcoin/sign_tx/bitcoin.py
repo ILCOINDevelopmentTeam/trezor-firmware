@@ -23,7 +23,7 @@ from .hash143 import Bip143Hash
 from .tx_info import OriginalTxInfo, TxInfo
 
 if False:
-    from typing import Sequence
+    from typing import Iterable, Sequence
 
     from trezor.crypto import bip32
 
@@ -103,6 +103,9 @@ class Bitcoin:
         # set of indices of inputs which are external
         self.external: set[int] = set()
 
+        # Flag indicating whether all internal inputs are Taproot.
+        self.taproot_only = True
+
         # transaction and signature serialization
         _SERIALIZED_TX_BUFFER[:] = bytes()
         self.serialized_tx = _SERIALIZED_TX_BUFFER
@@ -117,10 +120,10 @@ class Bitcoin:
         # stable device tests.
         self.orig_txs: list[OriginalTxInfo] = []
 
-        # h_inputs is a digest of the inputs streamed for approval in Step 1, which
-        # is used to ensure that the inputs streamed for verification in Step 3 are
-        # the same as those in Step 1.
+        # The digests of the inputs streamed for approval in Step 1. These are used to ensure that
+        # the inputs streamed for verification in Step 3 are the same as those in Step 1.
         self.h_inputs: bytes | None = None
+        self.h_external_inputs: bytes | None = None
 
         progress.init(tx.inputs_count, tx.outputs_count)
 
@@ -131,17 +134,24 @@ class Bitcoin:
         return Bip143Hash()
 
     async def step1_process_inputs(self) -> None:
+        h_external_inputs_check = HashWriter(sha256())
+
         for i in range(self.tx_info.tx.inputs_count):
             # STAGE_REQUEST_1_INPUT in legacy
             txi = await helpers.request_tx_input(self.tx_req, i, self.coin)
             script_pubkey = self.input_derive_script(txi)
             self.tx_info.add_input(txi, script_pubkey)
+            self.taproot_only = self.taproot_only and txi.script_type in (
+                InputScriptType.SPENDTAPROOT,
+                InputScriptType.EXTERNAL,
+            )
 
             if input_is_segwit(txi):
                 self.segwit.add(i)
 
             if input_is_external(txi):
                 self.external.add(i)
+                writers.write_tx_input_check(h_external_inputs_check, txi)
                 await self.process_external_input(txi)
             else:
                 await self.process_internal_input(txi)
@@ -150,6 +160,7 @@ class Bitcoin:
                 await self.process_original_input(txi, script_pubkey)
 
         self.h_inputs = self.tx_info.get_tx_check_digest()
+        self.h_external_inputs = h_external_inputs_check.get_digest()
 
         # Finalize original inputs.
         for orig in self.orig_txs:
@@ -180,25 +191,33 @@ class Bitcoin:
         # should come out the same as h_inputs, checked before continuing
         h_check = HashWriter(sha256())
 
-        # TODO do this loop only for external inputs
-        # TODO we will need a hash of external inputs and a list of their indices
-        for i in range(self.tx_info.tx.inputs_count):
+        if self.taproot_only:
+            input_indices: Iterable = self.external
+            expected_digest = self.h_external_inputs
+        else:
+            input_indices = range(self.tx_info.tx.inputs_count)
+            expected_digest = self.h_inputs
+
+        for i in input_indices:
             progress.advance()
             txi = await helpers.request_tx_input(self.tx_req, i, self.coin)
-
             writers.write_tx_input_check(h_check, txi)
-            # TODO disable streaming if all internal inputs are taproot
-            prev_amount, script_pubkey = await self.get_prevtx_output(
-                txi.prev_hash, txi.prev_index
-            )
-            if prev_amount != txi.amount:
-                raise wire.DataError("Invalid amount specified")
+
+            if self.taproot_only:
+                assert txi.script_pubkey is not None  # checked in sanitize_tx_input
+                script_pubkey = txi.script_pubkey
+            else:
+                prev_amount, script_pubkey = await self.get_prevtx_output(
+                    txi.prev_hash, txi.prev_index
+                )
+                if prev_amount != txi.amount:
+                    raise wire.DataError("Invalid amount specified")
 
             if i in self.external:
                 await self.verify_external_input(i, txi, script_pubkey)
 
         # check that the inputs were the same as those streamed for approval
-        if h_check.get_digest() != self.h_inputs:
+        if h_check.get_digest() != expected_digest:
             raise wire.ProcessError("Transaction has changed during signing")
 
         # verify the signature of one SIGHASH_ALL input in each original transaction
